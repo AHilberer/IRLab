@@ -3,12 +3,12 @@ import time
 
 app = FastAPI()
 
-# état simulé
+# simulated state
 position = {"sx": 0.0}
 
 @app.get("/move/{motor}/{pos}")
 def move(motor: str, pos: float):
-    # ici tu mets le vrai driver OWIS
+    # replace with real OWIS driver code here
     print(f"Moving {motor} to {pos}")
     time.sleep(0.1)  # simulate motion
     position[motor] = pos

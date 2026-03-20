@@ -6,7 +6,7 @@ app = FastAPI()
 
 @app.get("/acquire")
 def acquire(exposure: float = 0.1):
-    # ici tu mets le SDK Andor
+    # replace with the real Andor SDK acquisition call
     time.sleep(exposure)
 
     # fake spectrum

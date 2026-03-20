@@ -28,20 +28,28 @@ def ascan(motor, start, stop, npts):
     import numpy as np
     for x in np.linspace(start, stop, npts):
         mv(motor, x)
-
+print("-----------------------------------------------------")
 print("Checking connections...")
+print("-----------------------------------------------------")
 
-# try:
-#     sx.status()
-#     print("Motor server running")
-# except:
-#     print("Motor server NOT reachable")
+# prefer a short timeout at startup so the shell doesn't block
+STARTUP_TIMEOUT = 2
 
-# try:
-#     spec.status()
-#     print("Spectro server running")
-# except:
-#     print("Spectro server NOT reachable")
+m_status = sx.status(timeout=STARTUP_TIMEOUT)
+if m_status is None:
+    print("Motor server NOT reachable")
+else:
+    print(f"Motor server running: {m_status}")
 
-# # lancer IPython avec ton namespace
-# IPython.start_ipython(argv=[], user_ns=globals())
+s_status = spec.status(timeout=STARTUP_TIMEOUT)
+if s_status is None:
+    print("Spectro server NOT reachable")
+else:
+    print(f"Spectro server running: {s_status}")
+
+
+print("-----------------------------------------------------")
+print("Starting custom shell interface")
+print("-----------------------------------------------------")
+
+IPython.start_ipython(argv=[], user_ns=globals())
