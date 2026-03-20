@@ -52,4 +52,4 @@ print("-----------------------------------------------------")
 print("Starting custom shell interface")
 print("-----------------------------------------------------")
 
-IPython.start_ipython(argv=[], user_ns=globals())
+IPython.start_ipython(argv=[], user_ns=globals(), display_banner=False)
