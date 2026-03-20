@@ -5,7 +5,18 @@ import IPython
 from clients.motion_client import Motor
 from clients.spectro_client import Spectrometer
 
-print("----- Starting IRLab control shell -----")
+print("""
+ █████ ███████████   █████                 █████    
+▒▒███ ▒▒███▒▒▒▒▒███ ▒▒███                 ▒▒███     
+ ▒███  ▒███    ▒███  ▒███         ██████   ▒███████ 
+ ▒███  ▒██████████   ▒███        ▒▒▒▒▒███  ▒███▒▒███
+ ▒███  ▒███▒▒▒▒▒███  ▒███         ███████  ▒███ ▒███
+ ▒███  ▒███    ▒███  ▒███      █ ███▒▒███  ▒███ ▒███
+ █████ █████   █████ ███████████▒▒████████ ████████ 
+▒▒▒▒▒ ▒▒▒▒▒   ▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒  
+                                                    
+                                                    
+ """)
 
 sx = Motor("sx")
 spec = Spectrometer()
@@ -20,17 +31,17 @@ def ascan(motor, start, stop, npts):
 
 print("Checking connections...")
 
-try:
-    sx.status()
-    print("Motor server running")
-except:
-    print("Motor server NOT reachable")
+# try:
+#     sx.status()
+#     print("Motor server running")
+# except:
+#     print("Motor server NOT reachable")
 
-try:
-    spec.status()
-    print("Spectro server running")
-except:
-    print("Spectro server NOT reachable")
+# try:
+#     spec.status()
+#     print("Spectro server running")
+# except:
+#     print("Spectro server NOT reachable")
 
-# lancer IPython avec ton namespace
-IPython.start_ipython(argv=[], user_ns=globals())
+# # lancer IPython avec ton namespace
+# IPython.start_ipython(argv=[], user_ns=globals())
