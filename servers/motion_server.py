@@ -6,8 +6,8 @@ app = FastAPI()
 # simulated state
 position = {"sx": 0.0}
 
-@app.get("/move/{motor}/{pos}")
-def move(motor: str, pos: float):
+@app.get("/mv/{motor}/{pos}")
+def mv(motor: str, pos: float):
     # replace with real OWIS driver code here
     print(f"Moving {motor} to {pos}")
     time.sleep(0.1)  # simulate motion
