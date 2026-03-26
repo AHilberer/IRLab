@@ -4,3 +4,5 @@ fastapi
 numpy
 h5py
 requests
+pyserial
+pyyaml

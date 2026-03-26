@@ -1,6 +1,7 @@
 from common.http_client import safe_get, DEFAULT_TIMEOUT
+from common.servers import get_server_url
 
-BASE_URL = "http://192.168.1.2:8002"
+BASE_URL = get_server_url('spectro_server', env_var='SPECTRO_SERVER', default='http://127.0.0.1:8002')
 
 
 class Spectrometer:

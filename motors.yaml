@@ -1,0 +1,42 @@
+# Sample motor configuration for IRLab motion server
+# name: logical name used in API endpoints
+# axis: PS90 axis number (integer)
+# step_to_mm: conversion factor (optional)
+
+controllers:
+  - name: main_ps90
+    type: ps90
+    port: COM14
+    baud: 9600
+
+motors:
+  - name: faty
+    controller: main_ps90
+    controller_channel: 1
+    step_to_mm: 1.0
+    velocity: 100
+    acceleration: 10
+  - name: focd
+    controller: main_ps90
+    controller_channel: 5
+    step_to_mm: 1.0
+    velocity: 100
+    acceleration: 10
+  - name: sx
+    controller: main_ps90
+    controller_channel: 2
+    step_to_mm: 1.0
+    velocity: 100
+    acceleration: 10
+  - name: sy
+    controller: main_ps90
+    controller_channel: 3
+    step_to_mm: 1.0
+    velocity: 100
+    acceleration: 10
+  - name: sz
+    controller: main_ps90
+    controller_channel: 4
+    step_to_mm: 1.0
+    velocity: 100
+    acceleration: 10
