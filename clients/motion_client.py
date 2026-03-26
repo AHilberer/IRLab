@@ -2,6 +2,9 @@ from common.http_client import safe_get, DEFAULT_TIMEOUT
 
 BASE_URL = "http://192.168.1.2:8001"
 
+def build_motor_list_from_config():
+    # Placeholder for function implementation
+    pass
 
 def mv(*kwargs):
     """Function to send a motor to a new position. Usage: mv(sx, 10.0)"""
@@ -11,6 +14,8 @@ def mv(*kwargs):
         for i in range(0, len(kwargs), 2):
             motor = kwargs[i]
             pos = kwargs[i+1]
+            if not isinstance(motor, Motor) or not isinstance(pos, (int, float)):
+                raise ValueError("First argument must be a Motor instance and position must be a number")
             # fire-and-forget move request
             safe_get(f"{BASE_URL}/mv/{motor}/{pos}", timeout=DEFAULT_TIMEOUT)
 
@@ -22,36 +27,29 @@ def umv(*kwargs):
         for i in range(0, len(kwargs), 2):
             motor = kwargs[i]
             pos = kwargs[i+1]
+            if not isinstance(motor, Motor) or not isinstance(pos, (int, float)):
+                raise ValueError("First argument must be a Motor instance and position must be a number")
+            # make move with position updates
 
 def wm(*kwargs):
     """Function to check the position of a motor. Usage: wm(sx) returns the position of motor sx."""
     for motor in kwargs:
-        r = safe_get(f"{BASE_URL}/read/{motor}", timeout=DEFAULT_TIMEOUT)
-        print(f"{motor} position: {r.json()['position']}")
+        if not isinstance(motor, Motor):
+            raise ValueError("Arguments must be Motor instances")
+        r = safe_get(f"{BASE_URL}/read/{motor.name}", timeout=DEFAULT_TIMEOUT)
+        print(f"{motor.name} position: {r.json()['position']}")
 
 
 
 class Motor:
-    def __init__(self, name):
+    def __init__(self,
+                 name,
+                 controler_type="PS90",
+                 controler_channel=1,
+                 velocity=1.0,
+                 acceleration=1.0):
         self.name = name
-
-    def move(self, pos, timeout=DEFAULT_TIMEOUT):
-        """Request the server to move the motor. Raises RuntimeError on failure."""
-        safe_get(f"{BASE_URL}/move/{self.name}/{pos}", timeout=timeout)
-
-    def read(self, timeout=DEFAULT_TIMEOUT):
-        """Read the motor position. Raises RuntimeError on failure."""
-        r = safe_get(f"{BASE_URL}/read/{self.name}", timeout=timeout)
-        return r.json()["position"]
-
-    def status(self, timeout=DEFAULT_TIMEOUT):
-        """Check server status. Returns the response text or None if unreachable.
-
-        This method catches network errors and returns None for a non-blocking
-        availability check.
-        """
-        try:
-            r = safe_get(f"{BASE_URL}/status", timeout=timeout)
-            return r.text
-        except RuntimeError:
-            return None
+        self.controler_type = controler_type
+        self.controler_channel = controler_channel
+        self.velocity = velocity
+        self.acceleration = acceleration
