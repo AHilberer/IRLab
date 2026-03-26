@@ -14,29 +14,29 @@ motors:
     controller: main_ps90
     controller_channel: 1
     step_to_mm: 1.0
-    velocity: 100
-    acceleration: 10
+    velocity: 838861
+    acceleration: 215
   - name: focd
     controller: main_ps90
     controller_channel: 5
     step_to_mm: 1.0
-    velocity: 100
-    acceleration: 10
+    velocity: 419430
+    acceleration: 4000
   - name: sx
     controller: main_ps90
     controller_channel: 2
     step_to_mm: 1.0
-    velocity: 100
-    acceleration: 10
+    velocity: 1677722
+    acceleration: 2000
   - name: sy
     controller: main_ps90
     controller_channel: 3
     step_to_mm: 1.0
-    velocity: 100
-    acceleration: 10
+    velocity: 1677722
+    acceleration: 2000
   - name: sz
     controller: main_ps90
     controller_channel: 4
     step_to_mm: 1.0
-    velocity: 100
-    acceleration: 10
+    velocity: 419430
+    acceleration: 2000

@@ -344,7 +344,6 @@ def ps90_load_config(path: str = None, initialize: bool = False):
     """
     if yaml is None:
         raise HTTPException(status_code=500, detail='pyyaml is not installed in this environment')
-    get_controller()  # ensure controller is connected
     if path is None:
         # normalize default path
         path = os.path.normpath(DEFAULT_MOTOR_CONFIG)
