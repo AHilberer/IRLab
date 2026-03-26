@@ -361,42 +361,6 @@ def ps90_load_config(path: str = None, initialize: bool = False):
     return {"status": "loaded", "created": created}
 
 
-@app.get("/ps90/init/{motor}")
-def ps90_init(motor: str):
-    m = get_motor(motor)
-    try:
-        m.initialize_axis()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"status": "initialized", "motor": motor}
-
-
-@app.get("/ps90/read/{motor}")
-def ps90_read(motor: str):
-    m = get_motor(motor)
-    try:
-        pos = m.read_current_position()
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"motor": motor, "position": pos}
-
-
-@app.get("/ps90/move_abs/{motor}/{position}")
-def ps90_move_abs(motor: str, position: int):
-    m = get_motor(motor)
-    try:
-        # ensure we have a recent position
-        if m.current_position_step is None:
-            try:
-                m.read_current_position()
-            except Exception:
-                m.set_absolute_mode()
-        res = m.move_absolute(position)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"result": res}
-
-
 @app.get("/motors/move_abs/{motor}/{position}")
 def motors_move_abs(motor: str, position: int):
     """Generic endpoint to move a registered motor by name (controller-agnostic)."""
@@ -526,24 +490,9 @@ def controllers_list():
         out.append({"name": name, "status": status})
     return {"controllers": out}
 
-@app.get("/ps90/move_rel/{motor}/{delta}")
-def ps90_move_rel(motor: str, delta: int):
-    m = get_motor(motor)
-    try:
-        if m.current_position_step is None:
-            m.read_current_position()
-    except Exception:
-        raise HTTPException(status_code=500, detail='Could not read current position')
-    try:
-        m.move_relative(delta)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-    return {"result": "move_command_sent", "motor": motor}
-
-
 @app.get("/status")
 def status():
-    return "This confirms connection to the motion server. Use /ps90/* endpoints to control real hardware."
+    return "This confirms connection to the motion server. Use /motors/* endpoints to control hardware."
 
 
 ## launch with 'uvicorn servers.motion_server:app --host 0.0.0.0 --port 8001'
