@@ -6,7 +6,7 @@ from clients.motion_client import build_motor_list_from_config, mv, wm, Motor
 from clients.spectro_client import Spectrometer
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
-from scripts.ascan import ascan
+from scripts.base_scripts import ascan
 import os
 
 print("""
@@ -69,7 +69,7 @@ except Exception:
 
 
 # Note: client functions `mv` and `wm` are imported directly and available in the shell.
-# `ascan` has been moved to `scripts/ascan.py` and is imported above.
+# `ascan` is imported from `scripts/base_scripts.py`.
 print("-----------------------------------------------------")
 print("Checking connections...")
 print("-----------------------------------------------------")
