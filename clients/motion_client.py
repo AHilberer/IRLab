@@ -89,6 +89,37 @@ def mv(*args):
             results.append((motor.name, {'error': str(e)}))
     return results
 
+def mvr(*args):
+    """Move one or more motors relative to current position. Usage: mvr(motor1, delta1, motor2, delta2, ...)
+
+    Each motor argument must be a `Motor` instance and each delta a number.
+    Deltas are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
+    """
+    if len(args) % 2 != 0:
+        raise ValueError("mvr requires pairs of (Motor, delta)")
+    results = []
+    for i in range(0, len(args), 2):
+        motor = args[i]
+        delta = args[i+1]
+        if not isinstance(motor, Motor) or not isinstance(delta, (int, float)):
+            raise ValueError("Arguments must alternate Motor instance and numeric delta")
+
+        # convert mm -> steps when appropriate
+        if isinstance(delta, float) or motor.step_to_mm != 1.0:
+            # interpret as mm; step_to_mm is mm per step
+            try:
+                steps = int(round(delta / motor.step_to_mm))
+            except Exception:
+                steps = int(delta)
+        else:
+            steps = int(delta)
+
+        try:
+            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor.name, r.json()))
+        except Exception as e:
+            results.append((motor.name, {'error': str(e)}))
+    return results
 
 def wm(*motors):
     """Query positions for the provided Motor instances.

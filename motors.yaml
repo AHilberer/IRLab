@@ -16,9 +16,15 @@ motors:
     step_to_mm: 1.0
     velocity: 838861
     acceleration: 215
-  - name: focd
+  - name: focdy
     controller: main_ps90
     controller_channel: 5
+    step_to_mm: 1.0
+    velocity: 419430
+    acceleration: 4000
+  - name: focuy
+    controller: main_ps90
+    controller_channel: 6
     step_to_mm: 1.0
     velocity: 419430
     acceleration: 4000

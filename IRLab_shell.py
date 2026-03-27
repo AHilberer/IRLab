@@ -6,7 +6,7 @@ from clients.motion_client import build_motor_list_from_config, mv, wm, Motor
 from clients.spectro_client import Spectrometer
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
-from scripts.base_scripts import ascan
+from scripts.base_scripts import ascan, dscan
 import os
 
 print("""
