@@ -57,7 +57,32 @@ def build_motor_list_from_config(path: str = None, register_on_server: bool = Tr
     return motors
 
 
-def mv(*args):
+def _read_motor_position(motor):
+    r = safe_get(f"{BASE_URL}/motors/read/{motor.name}", timeout=DEFAULT_TIMEOUT)
+    data = r.json()
+    steps = data.get('position')
+    if steps is None:
+        return None
+    try:
+        mm = float(steps) * float(motor.step_to_mm)
+    except Exception:
+        mm = None
+    if mm is None:
+        return {'steps': steps}
+    return {'steps': steps, 'mm': mm}
+
+
+def _collect_positions(motors):
+    positions = {}
+    for motor in motors:
+        try:
+            positions[motor.name] = _read_motor_position(motor)
+        except Exception:
+            positions[motor.name] = None
+    return positions
+
+
+def mv(*args, show_positions: bool = True):
     """Move one or more motors. Usage: mv(motor1, pos1, motor2, pos2, ...)
 
     Each motor argument must be a `Motor` instance and each position a number.
@@ -65,12 +90,23 @@ def mv(*args):
     """
     if len(args) % 2 != 0:
         raise ValueError("mv requires pairs of (Motor, position)")
-    results = []
+
+    motors = []
     for i in range(0, len(args), 2):
         motor = args[i]
         pos = args[i+1]
         if not isinstance(motor, Motor) or not isinstance(pos, (int, float)):
             raise ValueError("Arguments must alternate Motor instance and numeric position")
+        motors.append(motor)
+
+    initial_positions = _collect_positions(motors)
+    if show_positions:
+        print(f"Initial positions: {initial_positions}")
+
+    results = []
+    for i in range(0, len(args), 2):
+        motor = args[i]
+        pos = args[i+1]
 
         # convert mm -> steps when appropriate
         if isinstance(pos, float) or motor.step_to_mm != 1.0:
@@ -87,9 +123,14 @@ def mv(*args):
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
+
+    if show_positions:
+        final_positions = _collect_positions(motors)
+        print(f"Final positions: {final_positions}")
+
     return results
 
-def mvr(*args):
+def mvr(*args, show_positions: bool = True):
     """Move one or more motors relative to current position. Usage: mvr(motor1, delta1, motor2, delta2, ...)
 
     Each motor argument must be a `Motor` instance and each delta a number.
@@ -97,12 +138,23 @@ def mvr(*args):
     """
     if len(args) % 2 != 0:
         raise ValueError("mvr requires pairs of (Motor, delta)")
-    results = []
+
+    motors = []
     for i in range(0, len(args), 2):
         motor = args[i]
         delta = args[i+1]
         if not isinstance(motor, Motor) or not isinstance(delta, (int, float)):
             raise ValueError("Arguments must alternate Motor instance and numeric delta")
+        motors.append(motor)
+
+    initial_positions = _collect_positions(motors)
+    if show_positions:
+        print(f"Initial positions: {initial_positions}")
+
+    results = []
+    for i in range(0, len(args), 2):
+        motor = args[i]
+        delta = args[i+1]
 
         # convert mm -> steps when appropriate
         if isinstance(delta, float) or motor.step_to_mm != 1.0:
@@ -119,6 +171,11 @@ def mvr(*args):
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
+
+    if show_positions:
+        final_positions = _collect_positions(motors)
+        print(f"Final positions: {final_positions}")
+
     return results
 
 def wm(*motors):
@@ -131,26 +188,9 @@ def wm(*motors):
         if not isinstance(motor, Motor):
             raise ValueError("Arguments must be Motor instances")
         try:
-            r = safe_get(f"{BASE_URL}/motors/read/{motor.name}", timeout=DEFAULT_TIMEOUT)
-            data = r.json()
-            steps = data.get('position')
-            if steps is None:
-                positions[motor.name] = None
-                print(f"{motor.name} position: None")
-            else:
-                try:
-                    mm = float(steps) * float(motor.step_to_mm)
-                except Exception:
-                    mm = None
-                if mm is None:
-                    positions[motor.name] = {'steps': steps}
-                    print(f"{motor.name} position: {steps} steps")
-                else:
-                    positions[motor.name] = {'steps': steps, 'mm': mm}
-                    print(f"{motor.name} position: {steps} steps ({mm} mm)")
-        except Exception as e:
+            positions[motor.name] = _read_motor_position(motor)
+        except Exception:
             positions[motor.name] = None
-            print(f"{motor.name} read error: {e}")
     return positions
 
 
