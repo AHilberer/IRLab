@@ -136,6 +136,9 @@ class PS90_motor:
             print('Wrong final position')
     
     def move_relative(self, displacement_step:int):
+        # Ensure reference position is known before computing relative target.
+        if self.current_position_step is None:
+            self.read_current_position()
         target_position = self.current_position_step + displacement_step
         self.move_absolute(target_position)
 

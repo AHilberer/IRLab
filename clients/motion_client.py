@@ -229,7 +229,7 @@ def free_all_motors():
         data = r.json()
         motor_names = [entry.get('name') for entry in data.get('motors', []) if entry.get('name')]
     except Exception as e:
-        return {'error': f'Failed to list motors: {e}', 'results': []}
+        return [('_list_motors', {'error': str(e)})]
 
     results = []
     for motor_name in motor_names:
@@ -239,7 +239,7 @@ def free_all_motors():
         except Exception as e:
             results.append((motor_name, {'error': str(e)}))
 
-    return {'count': len(motor_names), 'results': results}
+    return results
 
 
 

@@ -48,6 +48,8 @@ python IRLab_shell.py
 - `GET /motors/read/{motor}`
 - `GET /motors/move_abs/{motor}/{position}`
 - `GET /motors/move_rel/{motor}/{delta}`
+- `GET /motors/free/{motor}`
+- `GET /motors/control/{motor}`
 
 ## Main Spectrometer Endpoints
 
@@ -59,6 +61,12 @@ python IRLab_shell.py
 In `IRLab_shell.py`, these are available directly:
 
 - `mv(...)` move one or more motors
+- `mvr(...)` move one or more motors relatively
 - `wm(...)` read motor positions
+- `free(...)` release one or more motors
+- `control(...)` re-acquire control of one or more motors
+- `free_all_motors()` release all registered motors
 - `ascan(motor, start, stop, npts)` linear scan
+- `dscan(motor, start_delta, stop_delta, npts)` relative linear scan
+- `tweak(m1[, m2[, m3]])` interactive keyboard jog mode
 - `spec.acquire(...)` acquire spectrum
