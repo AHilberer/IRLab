@@ -222,6 +222,26 @@ def control(*motors):
     return results
 
 
+def free_all_motors():
+    """Release all motors currently registered on the motion server."""
+    try:
+        r = safe_get(f"{BASE_URL}/motors/list", timeout=DEFAULT_TIMEOUT)
+        data = r.json()
+        motor_names = [entry.get('name') for entry in data.get('motors', []) if entry.get('name')]
+    except Exception as e:
+        return {'error': f'Failed to list motors: {e}', 'results': []}
+
+    results = []
+    for motor_name in motor_names:
+        try:
+            resp = safe_get(f"{BASE_URL}/motors/free/{motor_name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor_name, resp.json()))
+        except Exception as e:
+            results.append((motor_name, {'error': str(e)}))
+
+    return {'count': len(motor_names), 'results': results}
+
+
 
 class Motor:
     def __init__(self,

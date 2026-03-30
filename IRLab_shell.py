@@ -2,7 +2,7 @@
 # startup with 'python IRLab_shell.py'
 
 import IPython
-from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, Motor
+from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, Motor
 from clients.spectro_client import Spectrometer
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
