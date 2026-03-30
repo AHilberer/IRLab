@@ -194,6 +194,34 @@ def wm(*motors):
     return positions
 
 
+def free(*motors):
+    """Release one or more motors. Usage: free(motor1, motor2, ...)"""
+    results = []
+    for motor in motors:
+        if not isinstance(motor, Motor):
+            raise ValueError("Arguments must be Motor instances")
+        try:
+            r = safe_get(f"{BASE_URL}/motors/free/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor.name, r.json()))
+        except Exception as e:
+            results.append((motor.name, {'error': str(e)}))
+    return results
+
+
+def control(*motors):
+    """Re-acquire control of one or more motors. Usage: control(motor1, motor2, ...)"""
+    results = []
+    for motor in motors:
+        if not isinstance(motor, Motor):
+            raise ValueError("Arguments must be Motor instances")
+        try:
+            r = safe_get(f"{BASE_URL}/motors/control/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor.name, r.json()))
+        except Exception as e:
+            results.append((motor.name, {'error': str(e)}))
+    return results
+
+
 
 class Motor:
     def __init__(self,

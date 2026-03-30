@@ -402,6 +402,28 @@ def motors_init(motor: str):
     return {"status": "initialized", "motor": motor}
 
 
+@app.get("/motors/free/{motor}")
+def motors_free(motor: str):
+    """Release control on a registered motor axis."""
+    m = get_motor(motor)
+    try:
+        m.free()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "freed", "motor": motor}
+
+
+@app.get("/motors/control/{motor}")
+def motors_control(motor: str):
+    """Re-acquire control on a registered motor axis."""
+    m = get_motor(motor)
+    try:
+        m.control()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"status": "controlled", "motor": motor}
+
+
 @app.get("/motors/register")
 def motors_register(name: str,
                    controller_type: str = None,
