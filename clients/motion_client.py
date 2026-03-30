@@ -242,6 +242,25 @@ def free_all_motors():
     return results
 
 
+def control_all_motors():
+    """Re-acquire control of all motors currently registered on the motion server."""
+    try:
+        r = safe_get(f"{BASE_URL}/motors/list", timeout=DEFAULT_TIMEOUT)
+        data = r.json()
+        motor_names = [entry.get('name') for entry in data.get('motors', []) if entry.get('name')]
+    except Exception as e:
+        return [('_list_motors', {'error': str(e)})]
+
+    results = []
+    for motor_name in motor_names:
+        try:
+            resp = safe_get(f"{BASE_URL}/motors/control/{motor_name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor_name, resp.json()))
+        except Exception as e:
+            results.append((motor_name, {'error': str(e)}))
+
+    return results
+
 
 class Motor:
     def __init__(self,
