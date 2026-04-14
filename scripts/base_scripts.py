@@ -73,6 +73,7 @@ def save_hdf5(data, filename: str = "scan.h5"):
             grp["intensity"] = point["spectrum"]["intensity"]
 
 
+# Functions necessary for the interactive tweak mode, but not expected to be used directly by users, are defined here but prefixed with an underscore to indicate they are "private" helpers.
 @contextmanager
 def _raw_stdin_mode() -> Iterator[None]:
     if os.name == "nt":
@@ -137,8 +138,30 @@ def _extract_wm_value(readback: dict, motor_name: str):
     return value
 
 
-def tweak(*motors: Any, step: int = 2, step_scale: float = 2.0, min_step: int = 1):
+def _motor_uses_mm(motor: Any) -> bool:
+    step_to_mm = getattr(motor, "step_to_mm", 1.0)
+    try:
+        return float(step_to_mm) != 1.0
+    except Exception:
+        return False
+
+
+def _motor_position_unit(motor: Any) -> str:
+    return "mm" if _motor_uses_mm(motor) else "steps"
+
+
+def _movement_delta_for_motor(motor: Any, delta: float) -> float:
+    if _motor_uses_mm(motor):
+        return float(delta)
+    sign = -1.0 if delta < 0 else 1.0
+    return sign * max(1, int(round(abs(delta))))
+
+
+def tweak(*motors: Any, step: float = 0.01, step_scale: float = 2.0, min_step: float = 0.0001):
     """Interactive jog mode for 1, 2, or 3 motors using relative moves.
+
+    Step values are expressed in millimetres for calibrated motors. Motors
+    without calibration fall back to whole-step jogs.
 
     Controls:
     - Left/Right: axis 1
@@ -153,9 +176,8 @@ def tweak(*motors: Any, step: int = 2, step_scale: float = 2.0, min_step: int = 
         raise ValueError("tweak expects 1, 2, or 3 motors")
 
     names = [str(getattr(motor, "name", motor)) for motor in motors]
-    # Motors are currently used without calibration: keep discrete integer steps.
-    current_step = max(1, int(round(step)))
-    min_step = max(1, int(round(min_step)))
+    current_step = max(float(step), float(min_step))
+    min_step = float(min_step)
 
     positions = {name: 0.0 for name in names}
     try:
@@ -179,17 +201,21 @@ def tweak(*motors: Any, step: int = 2, step_scale: float = 2.0, min_step: int = 
 
     def render_status() -> None:
         refresh_positions()
-        status_parts = [f"{name}={positions[name]:g}" for name in names]
-        msg = f"\rstep={current_step:g} | " + " | ".join(status_parts) + "      "
+        status_parts = [
+            f"{name}={positions[name]:g} {_motor_position_unit(motor)}"
+            for motor, name in zip(motors, names)
+        ]
+        msg = f"\rstep={current_step:g} mm | " + " | ".join(status_parts) + "      "
         sys.stdout.write(msg)
         sys.stdout.flush()
 
     def move(index: int, delta: float) -> None:
         motor = motors[index]
         name = names[index]
+        effective_delta = _movement_delta_for_motor(motor, delta)
         try:
-            mvr(motor, delta, show_positions=False)
-            positions[name] += delta
+            mvr(motor, effective_delta, show_positions=False)
+            positions[name] += effective_delta
         except Exception as exc:
             sys.stdout.write(f"\nMove error on {name}: {exc}\n")
             sys.stdout.flush()
@@ -199,7 +225,8 @@ def tweak(*motors: Any, step: int = 2, step_scale: float = 2.0, min_step: int = 
         print("1-axis mode: Left/Right and Up/Down control the same motor")
     if len(motors) == 3:
         print("3-axis mode: a/z keys control axis 3")
-    print(f"Initial step: {current_step:g}\n")
+    print("Step is expressed in mm for calibrated motors; non-calibrated motors use whole steps.")
+    print(f"Initial step: {current_step:g} mm\n")
     render_status()
 
     with _raw_stdin_mode():
@@ -208,11 +235,11 @@ def tweak(*motors: Any, step: int = 2, step_scale: float = 2.0, min_step: int = 
             if key == "QUIT":
                 break
             if key == "STEP_UP":
-                current_step = max(1, int(round(current_step * step_scale)))
+                current_step = max(min_step, current_step * step_scale)
                 render_status()
                 continue
             if key == "STEP_DOWN":
-                current_step = max(min_step, int(round(current_step / step_scale)))
+                current_step = max(min_step, current_step / step_scale)
                 render_status()
                 continue
             if key == "LEFT":
