@@ -14,7 +14,7 @@ DEFAULT_TIMEOUT = 5
 def safe_get(url, timeout=DEFAULT_TIMEOUT, **kwargs):
     """Perform a GET request with a timeout and wrap network errors.
 
-    Returns the requests.Response on success. Raises RuntimeError for
+    Returns the requests. Response on success. Raises RuntimeError for
     timeouts and other request-related exceptions so callers can handle
     them uniformly.
     """

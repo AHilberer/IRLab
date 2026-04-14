@@ -7,6 +7,7 @@ except Exception:
     yaml = None
 
 BASE_URL = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
+DEFAULT_MOTION_TIMEOUT = 60
 
 
 def build_motor_list_from_config(path: str = None, register_on_server: bool = True):
@@ -82,11 +83,12 @@ def _collect_positions(motors):
     return positions
 
 
-def mv(*args, show_positions: bool = True):
+def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
     """Move one or more motors. Usage: mv(motor1, pos1, motor2, pos2, ...)
 
     Each motor argument must be a `Motor` instance and each position a number.
     Positions are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
+    `timeout=None` waits indefinitely for the server response.
     """
     if len(args) % 2 != 0:
         raise ValueError("mv requires pairs of (Motor, position)")
@@ -119,7 +121,7 @@ def mv(*args, show_positions: bool = True):
             steps = int(pos)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=DEFAULT_TIMEOUT)
+            r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
@@ -130,11 +132,12 @@ def mv(*args, show_positions: bool = True):
 
     return results
 
-def mvr(*args, show_positions: bool = True):
+def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
     """Move one or more motors relative to current position. Usage: mvr(motor1, delta1, motor2, delta2, ...)
 
     Each motor argument must be a `Motor` instance and each delta a number.
     Deltas are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
+    `timeout=None` waits indefinitely for the server response.
     """
     if len(args) % 2 != 0:
         raise ValueError("mvr requires pairs of (Motor, delta)")
@@ -167,7 +170,7 @@ def mvr(*args, show_positions: bool = True):
             steps = int(delta)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=DEFAULT_TIMEOUT)
+            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
