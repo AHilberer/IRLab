@@ -31,18 +31,18 @@ motors:
   - name: sx
     controller: main_ps90
     controller_channel: 2
-    step_to_mm: 1.0
+    step_to_mm: 0.00005
     velocity: 1677722
     acceleration: 2000
   - name: sy
     controller: main_ps90
     controller_channel: 3
-    step_to_mm: 1.0
+    step_to_mm: 0.00005
     velocity: 1677722
     acceleration: 2000
   - name: sz
     controller: main_ps90
     controller_channel: 4
-    step_to_mm: 1.0
+    step_to_mm: 0.000025
     velocity: 419430
     acceleration: 2000
