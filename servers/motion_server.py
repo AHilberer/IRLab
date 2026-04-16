@@ -26,7 +26,7 @@ DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'motors.yam
 
 
 class PS90:
-    def __init__(self, port='COM14', baudrate=9600):
+    def __init__(self, port='COM25', baudrate=9600):
         if serial is None:
             raise RuntimeError("pyserial is required but not installed")
         self.ser = serial.Serial(port, baudrate,
@@ -263,15 +263,14 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
             if cname in controllers:
                 continue
             if ctype == 'ps90':
-                port = ctrl.get('port') or os.environ.get('PS90_PORT', 'COM14')
+                port = ctrl.get('port') or os.environ.get('PS90_PORT', 'COM25')
                 baud = int(ctrl.get('baud', 9600))
                 try:
                     controllers[cname] = PS90(port=port, baudrate=baud)
                     if default_controller_name is None:
                         default_controller_name = cname
-                except Exception:
-                    # skip controllers that fail to initialize
-                    continue
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f'Failed to create controller "{cname}": {e}')
             else:
                 # unknown controller type: skip (could add hooks for other types)
                 continue
@@ -292,7 +291,7 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
             if controller_name not in controllers:
                 if controller_type.lower() == 'ps90':
                     try:
-                        controllers[controller_name] = PS90(port=os.environ.get('PS90_PORT', 'COM14'), baudrate=9600)
+                        controllers[controller_name] = PS90(port=os.environ.get('PS90_PORT', 'COM25'), baudrate=9600)
                         if default_controller_name is None:
                             default_controller_name = controller_name
                     except Exception:
@@ -441,7 +440,7 @@ def motors_register(name: str,
 
     Examples:
       /motors/register?name=sx&controller_name=main_ps90&axis=2
-      /motors/register?name=mx&controller_type=ps90&controller_port=COM14&axis=1
+      /motors/register?name=mx&controller_type=ps90&controller_port=COM25&axis=1
     """
     if not name or axis is None:
         raise HTTPException(status_code=400, detail='name and axis are required')

@@ -6,7 +6,7 @@
 controllers:
   - name: main_ps90
     type: ps90
-    port: COM14
+    port: COM25
     baud: 9600
 
 motors:
