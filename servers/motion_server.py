@@ -22,7 +22,7 @@ default_controller_name = None
 motors = {}
 
 # default config path (relative to repo root)
-DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'motors.yaml')
+DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
 
 
 class PS90:
@@ -342,7 +342,7 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
 @app.get("/ps90/load_config")
 def ps90_load_config(path: str = None, initialize: bool = False):
     """Load motor definitions from a YAML file and register them. If `initialize=true`, call initialize on each.
-    By default the server will look for `motors.yaml` next to the repository root.
+    By default the server will look for `config/motors.yaml` in the repository.
     """
     if yaml is None:
         raise HTTPException(status_code=500, detail='pyyaml is not installed in this environment')

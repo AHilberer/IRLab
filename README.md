@@ -32,8 +32,8 @@ python IRLab_shell.py
 
 ## Configuration
 
-- `servers.yaml`: default server URLs
-- `motors.yaml`: controllers, motors, and optional motion parameters
+- `config/servers.yaml`: default server URLs
+- `config/motors.yaml`: controllers, motors, and optional motion parameters
 - Environment overrides:
 	- `MOTION_SERVER`
 	- `SPECTRO_SERVER`

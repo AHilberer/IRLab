@@ -56,6 +56,13 @@ except Exception:
     print("Spectro server NOT reachable")
     spectro_server_ok = False
 
+print("-----------------------------------------------------")
+print("Checked connections to servers.")
+print("-----------------------------------------------------")
+print("-----------------------------------------------------")
+print("Building controlers and motor objects...")
+print("-----------------------------------------------------")
+
 # Build or obtain motors. Prefer server-side single source-of-truth by asking the motion
 # server to load its config and then using /motors/list to populate local Motor objects.
 motors = {}
@@ -103,7 +110,7 @@ else:
     raise Exception(f"Motion server not reachable, cannot load motors from server")
 
 print("-----------------------------------------------------")
-print("Starting custom shell interface")
+print("Starting custom shell interface.")
 print("-----------------------------------------------------")
 
 IPython.start_ipython(argv=[], user_ns=globals(), display_banner=False)

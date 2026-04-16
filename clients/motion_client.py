@@ -16,7 +16,7 @@ def build_motor_list_from_config(path: str = None, register_on_server: bool = Tr
     Returns a dict mapping motor name -> Motor instance.
     """
     if path is None:
-        path = os.path.join(os.path.dirname(__file__), '..', 'motors.yaml')
+        path = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
         path = os.path.normpath(path)
     if not os.path.exists(path):
         raise FileNotFoundError(f"Motor config not found: {path}")
