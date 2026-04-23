@@ -1,0 +1,71 @@
+# FESTO pneumatic on/off actuator configuration — NI-DAQmx backend
+#
+# controllers: one entry per NI-DAQ chassis.
+# actuators:   mapping between logical names and physical NI-DAQ channels.
+#
+# Each actuator uses a *pair* of complementary digital output lines:
+#   line A (first)  = logical state  (True  = actuated)
+#   line B (second) = inverted state (False = actuated)
+# This matches the convention: data = [state, not state]
+#
+# Channel address: {chassis}{module}/port0/{lines}
+#
+# Actuator numbers below match the festo_dict from the test notebook.
+# Rename the "name" field to something meaningful for your experiment
+# (e.g. "valve_beam_shutter", "valve_purge_N2", …).
+
+controllers:
+  - name: main_festo
+    type: nidaqmx
+    chassis: cDAQ1           # chassis name as shown in NI MAX
+
+actuators:
+  - name: festo_1
+    controller: main_festo
+    module: Mod1
+    lines: "line0:1"
+
+  - name: festo_2
+    controller: main_festo
+    module: Mod1
+    lines: "line2:3"
+
+  - name: festo_3
+    controller: main_festo
+    module: Mod2
+    lines: "line0:1"
+
+  - name: festo_4
+    controller: main_festo
+    module: Mod2
+    lines: "line2:3"
+
+  - name: festo_5
+    controller: main_festo
+    module: Mod3
+    lines: "line0:1"
+
+  - name: festo_6
+    controller: main_festo
+    module: Mod3
+    lines: "line2:3"
+
+  - name: festo_7
+    controller: main_festo
+    module: Mod3
+    lines: "line4:5"
+
+  - name: festo_8
+    controller: main_festo
+    module: Mod3
+    lines: "line6:7"
+
+  - name: festo_9
+    controller: main_festo
+    module: Mod4
+    lines: "line0:1"
+
+  - name: festo_10
+    controller: main_festo
+    module: Mod4
+    lines: "line2:3"

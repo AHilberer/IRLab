@@ -4,6 +4,7 @@
 import IPython
 from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, Motor
 from clients.spectro_client import Spectrometer
+from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 from scripts.base_scripts import ascan, dscan, tweak
@@ -55,6 +56,16 @@ try:
 except Exception:
     print("Spectro server NOT reachable")
     spectro_server_ok = False
+
+# Check FESTO server status
+try:
+    festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
+    r = safe_get(f"{festo_url}/status", timeout=STARTUP_TIMEOUT)
+    print(f"FESTO server running: {r.text}")
+    festo_server_ok = True
+except Exception:
+    print("FESTO server NOT reachable")
+    festo_server_ok = False
 
 print("-----------------------------------------------------")
 print("Checked connections to servers.")
@@ -108,6 +119,48 @@ if motor_server_ok:
             motors = {}
 else:
     raise Exception(f"Motion server not reachable, cannot load motors from server")
+
+print("-----------------------------------------------------")
+print("Building FESTO actuator objects...")
+print("-----------------------------------------------------")
+
+actuators = {}
+if festo_server_ok:
+    try:
+        festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
+        # Ask the server to load config (connects NI-DAQ controller and registers actuators).
+        try:
+            safe_get(f"{festo_url}/festo/load_config", timeout=5)
+        except Exception:
+            pass
+
+        # Retrieve the registered actuators and expose them as named objects in the shell.
+        try:
+            r = safe_get(f"{festo_url}/festo/actuators/list", timeout=5)
+            data = r.json()
+            for entry in data.get('actuators', []):
+                name = entry.get('name')
+                if not name:
+                    continue
+                a = PneumaticActuator(
+                    name=name,
+                    controller_name=entry.get('controller'),
+                    module=entry.get('module'),
+                    lines=entry.get('lines'),
+                )
+                actuators[name] = a
+                globals()[name] = a
+        except Exception:
+            try:
+                actuators = build_actuator_list_from_config(register_on_server=True)
+                for _name, _actuator in actuators.items():
+                    globals()[_name] = _actuator
+            except Exception as e:
+                print(f"Warning: failed to load/register FESTO actuators: {e}")
+                actuators = {}
+    except Exception as e:
+        print(f"Warning: FESTO initialization failed: {e}")
+        actuators = {}
 
 print("-----------------------------------------------------")
 print("Starting custom shell interface.")

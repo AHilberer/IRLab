@@ -1,5 +1,6 @@
 # Default server endpoints used by clients
-# Override using environment variables (MOTION_SERVER, SPECTRO_SERVER)
+# Override using environment variables (MOTION_SERVER, SPECTRO_SERVER, FESTO_SERVER)
 
-motion_server: "http://192.168.1.3:8001"
+motion_server: "http://192.168.1.2:8001"
 spectro_server: "http://192.168.1.3:8002"
+festo_server: "http://192.168.1.2:8003"

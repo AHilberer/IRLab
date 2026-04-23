@@ -6,3 +6,4 @@ h5py
 requests
 pyserial
 pyyaml
+nidaqmx
