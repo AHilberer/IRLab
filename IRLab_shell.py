@@ -99,14 +99,20 @@ if motor_server_ok:
                 m = Motor(name=name, controler_channel=axis, step_to_mm=step, controller_name=controller_name)
                 motors[name] = m
                 globals()[name] = m
+                print(f"  [OK] Motor '{name}'  (axis {axis}, controller: {controller_name}, step_to_mm: {step})")
+            if not motors:
+                print("  (no motors registered on server)")
         except Exception:
             # fallback: try local config and register on server (best-effort)
             try:
                 motors = build_motor_list_from_config(register_on_server=True)
                 for _name, _motor in motors.items():
                     globals()[_name] = _motor
+                    print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
+                if not motors:
+                    print("  (no motors found in config)")
             except Exception as e:
-                print(f"Warning: failed to load/register motors from config: {e}")
+                print(f"  [WARN] Failed to load/register motors from config: {e}")
                 motors = {}
     except Exception:
         # completely offline: try local config without registering
@@ -114,8 +120,11 @@ if motor_server_ok:
             motors = build_motor_list_from_config(register_on_server=False)
             for _name, _motor in motors.items():
                 globals()[_name] = _motor
+                print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
+            if not motors:
+                print("  (no motors found in config)")
         except Exception as e:
-            print(f"Warning: failed to load local motors from config: {e}")
+            print(f"  [WARN] Failed to load local motors from config: {e}")
             motors = {}
 else:
     raise Exception(f"Motion server not reachable, cannot load motors from server")
@@ -150,16 +159,22 @@ if festo_server_ok:
                 )
                 actuators[name] = a
                 globals()[name] = a
+                print(f"  [OK] Actuator '{name}'  ({entry.get('controller')}/{entry.get('module')}/port0/{entry.get('lines')})")
+            if not actuators:
+                print("  (no actuators registered on server)")
         except Exception:
             try:
                 actuators = build_actuator_list_from_config(register_on_server=True)
                 for _name, _actuator in actuators.items():
                     globals()[_name] = _actuator
+                    print(f"  [OK] Actuator '{_name}'  ({_actuator.module}/port0/{_actuator.lines})")
+                if not actuators:
+                    print("  (no actuators found in config)")
             except Exception as e:
-                print(f"Warning: failed to load/register FESTO actuators: {e}")
+                print(f"  [WARN] Failed to load/register FESTO actuators: {e}")
                 actuators = {}
     except Exception as e:
-        print(f"Warning: FESTO initialization failed: {e}")
+        print(f"  [WARN] FESTO initialization failed: {e}")
         actuators = {}
 
 print("-----------------------------------------------------")
