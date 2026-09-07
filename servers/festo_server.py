@@ -86,7 +86,11 @@ class FestoActuator:
         self.controller = controller
         self.module = module
         self.lines = lines
-        self.last_state = None  # cached last commanded state
+        self.last_state = None  # cached last known *physical* position (True=on/actuated, False=off/retracted)
+        # `state` tracks connectivity/health (DeviceState convention), not physical position:
+        # OFF until a hardware call has succeeded at least once, ON once confirmed reachable,
+        # FAULT if the last call raised. Use `last_state` / the on/off endpoints for the
+        # actuator's actual on/off position.
         self.state = DeviceState.OFF
 
     def set_on(self):
@@ -105,7 +109,7 @@ class FestoActuator:
             self.state = DeviceState.FAULT
             raise
         self.last_state = False
-        self.state = DeviceState.OFF
+        self.state = DeviceState.ON
 
     def read_state(self) -> bool:
         try:
@@ -114,7 +118,7 @@ class FestoActuator:
             self.state = DeviceState.FAULT
             raise
         self.last_state = state
-        self.state = DeviceState.ON if state else DeviceState.OFF
+        self.state = DeviceState.ON
         return state
 
     def toggle(self) -> bool:
@@ -351,7 +355,7 @@ def festo_set_on(actuator_name: str):
         a.set_on()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {'actuator': actuator_name, 'state': 'on'}
+    return {'actuator': actuator_name, 'state': 'on', 'device_state': a.state.value}
 
 
 @app.get('/festo/actuators/off/{actuator_name}')
@@ -361,7 +365,7 @@ def festo_set_off(actuator_name: str):
         a.set_off()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {'actuator': actuator_name, 'state': 'off'}
+    return {'actuator': actuator_name, 'state': 'off', 'device_state': a.state.value}
 
 
 @app.get('/festo/actuators/toggle/{actuator_name}')
@@ -371,7 +375,7 @@ def festo_toggle(actuator_name: str):
         new_state = a.toggle()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {'actuator': actuator_name, 'state': 'on' if new_state else 'off'}
+    return {'actuator': actuator_name, 'state': 'on' if new_state else 'off', 'device_state': a.state.value}
 
 
 @app.get('/festo/actuators/state/{actuator_name}')
@@ -381,7 +385,7 @@ def festo_state(actuator_name: str):
         st = a.read_state()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {'actuator': actuator_name, 'state': 'on' if st else 'off'}
+    return {'actuator': actuator_name, 'state': 'on' if st else 'off', 'device_state': a.state.value}
 
 
 @app.get('/status')
@@ -391,7 +395,11 @@ def status():
 
 @app.get('/state')
 def get_state():
-    """Server-wide state: FAULT if any actuator is in FAULT, ON if any actuator is on, else OFF."""
+    """Server-wide connectivity/health: FAULT if any actuator's last call errored, ON if any
+    actuator has been successfully operated (confirms the controller is reachable), else OFF
+    (nothing confirmed yet). This reflects health, not the actuators' physical on/off position
+    -- see /festo/actuators/state/{name} (or the `device_state` field there) for that distinction.
+    """
     states = [a.state for a in actuators.values()]
     if DeviceState.FAULT in states:
         overall = DeviceState.FAULT
