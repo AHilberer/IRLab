@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 import time
 import os
 
+from common.states import DeviceState
+
 try:
     import serial
 except Exception:
@@ -71,20 +73,26 @@ class PS90_motor:
         self.control_axis_number = control_axis_number
         self.step_to_mm = step_to_mm
         self.current_position_step = None
-        
-    
+        self.state = DeviceState.OFF
+
+
     def initialize_axis(self):
-        control_unit_status = self.control_unit.get_status()
-        if control_unit_status[self.control_axis_number-1] != 'R':
-            try:
-                self.control_unit.init_axis(self.control_axis_number)
-                print(f'Initialized motor {self.name}')
-            except:
-                print(f'Failed to initilaize moto {self.name}')
-        else:
-            print(f'Motor {self.name} already initialized')
-        self.set_absolute_mode()
-        self.read_current_position()
+        try:
+            control_unit_status = self.control_unit.get_status()
+            if control_unit_status[self.control_axis_number-1] != 'R':
+                try:
+                    self.control_unit.init_axis(self.control_axis_number)
+                    print(f'Initialized motor {self.name}')
+                except:
+                    print(f'Failed to initilaize moto {self.name}')
+            else:
+                print(f'Motor {self.name} already initialized')
+            self.set_absolute_mode()
+            self.read_current_position()
+        except Exception:
+            self.state = DeviceState.FAULT
+            raise
+        self.state = DeviceState.ON
     
     def read_parameters(self):
         print('------------------------------------------')
@@ -120,16 +128,19 @@ class PS90_motor:
         
     def move_absolute(self, target_position:int):
         print(f"Moving {self.name} to {target_position}")
+        self.state = DeviceState.MOVING
         try:
             self.control_unit.send(f'PSET{self.control_axis_number}={target_position}')
             self.control_unit.send(f'PGO{self.control_axis_number}')
+            while self.control_unit.send(f'?ASTAT')[self.control_axis_number-1]=='T':
+                    time.sleep(0.05)
+            actual_pos = self.read_current_position()
         except:
+            self.state = DeviceState.FAULT
             print(f'Error sending movement command to axis {self.control_axis_number}.')
             raise
-            
-        while self.control_unit.send(f'?ASTAT')[self.control_axis_number-1]=='T':
-                time.sleep(0.05)
-        actual_pos = self.read_current_position()
+
+        self.state = DeviceState.ON
         if int(actual_pos)==target_position:
             return 'Move OK'
         else:
@@ -391,7 +402,7 @@ def motors_read(motor: str):
         pos = m.read_current_position()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"motor": motor, "position": pos}
+    return {"motor": motor, "position": pos, "state": m.state.value}
 
 
 @app.get("/motors/init/{motor}")
@@ -517,6 +528,19 @@ def controllers_list():
 @app.get("/status")
 def status():
     return "This confirms connection to the motion server. Use /motors/* endpoints to control hardware."
+
+
+@app.get("/state")
+def get_state():
+    """Server-wide state: FAULT if any motor is in FAULT, MOVING if any motor is moving, else ON."""
+    states = [m.state for m in motors.values()]
+    if DeviceState.FAULT in states:
+        overall = DeviceState.FAULT
+    elif DeviceState.MOVING in states:
+        overall = DeviceState.MOVING
+    else:
+        overall = DeviceState.ON
+    return {"state": overall.value}
 
 
 ## launch with 'uvicorn servers.motion_server:app --host 0.0.0.0 --port 8001'

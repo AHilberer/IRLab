@@ -177,6 +177,27 @@ if festo_server_ok:
         print(f"  [WARN] FESTO initialization failed: {e}")
         actuators = {}
 
+STATE_CHECK_TIMEOUT = 2
+
+
+def check_all():
+    """Query GET /state on all three device servers and print their reported state.
+
+    Prints UNREACHABLE for a server if the request fails or times out.
+    """
+    servers = [
+        ("motion_server", get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')),
+        ("spectro_server", get_server_url('spectro_server', env_var='SPECTRO_SERVER', default='http://127.0.0.1:8002')),
+        ("festo_server", get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')),
+    ]
+    for name, url in servers:
+        try:
+            r = safe_get(f"{url}/state", timeout=STATE_CHECK_TIMEOUT)
+            print(f"{name}: {r.json().get('state', 'UNKNOWN')}")
+        except Exception:
+            print(f"{name}: UNREACHABLE")
+
+
 print("-----------------------------------------------------")
 print("Starting custom shell interface.")
 print("-----------------------------------------------------")

@@ -1,6 +1,8 @@
 from fastapi import FastAPI, HTTPException
 import os
 
+from common.states import DeviceState
+
 try:
     import nidaqmx
     from nidaqmx.constants import LineGrouping
@@ -85,18 +87,34 @@ class FestoActuator:
         self.module = module
         self.lines = lines
         self.last_state = None  # cached last commanded state
+        self.state = DeviceState.OFF
 
     def set_on(self):
-        self.controller.write(self.module, self.lines, True)
+        try:
+            self.controller.write(self.module, self.lines, True)
+        except Exception:
+            self.state = DeviceState.FAULT
+            raise
         self.last_state = True
+        self.state = DeviceState.ON
 
     def set_off(self):
-        self.controller.write(self.module, self.lines, False)
+        try:
+            self.controller.write(self.module, self.lines, False)
+        except Exception:
+            self.state = DeviceState.FAULT
+            raise
         self.last_state = False
+        self.state = DeviceState.OFF
 
     def read_state(self) -> bool:
-        state = self.controller.read(self.module, self.lines)
+        try:
+            state = self.controller.read(self.module, self.lines)
+        except Exception:
+            self.state = DeviceState.FAULT
+            raise
         self.last_state = state
+        self.state = DeviceState.ON if state else DeviceState.OFF
         return state
 
     def toggle(self) -> bool:
@@ -369,6 +387,19 @@ def festo_state(actuator_name: str):
 @app.get('/status')
 def status():
     return 'This confirms connection to the FESTO NI-DAQmx server. Use /festo/actuators/* endpoints.'
+
+
+@app.get('/state')
+def get_state():
+    """Server-wide state: FAULT if any actuator is in FAULT, ON if any actuator is on, else OFF."""
+    states = [a.state for a in actuators.values()]
+    if DeviceState.FAULT in states:
+        overall = DeviceState.FAULT
+    elif DeviceState.ON in states:
+        overall = DeviceState.ON
+    else:
+        overall = DeviceState.OFF
+    return {'state': overall.value}
 
 
 @app.on_event('shutdown')
