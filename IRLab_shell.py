@@ -53,6 +53,12 @@ try:
     else:
         print(f"Spectro server running: {s_status}")
         spectro_server_ok = True
+        # ask the server to load its config and connect the hardware (non-fatal)
+        try:
+            spectro_url = get_server_url('spectro_server', env_var='SPECTRO_SERVER', default='http://127.0.0.1:8002')
+            safe_get(f"{spectro_url}/spectro/load_config", timeout=5)
+        except Exception as e:
+            print(f"  [WARN] Failed to load/connect spectrometer from config: {e}")
 except Exception:
     print("Spectro server NOT reachable")
     spectro_server_ok = False

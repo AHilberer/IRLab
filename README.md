@@ -5,7 +5,7 @@ Control framework for an optical spectroscopy bench.
 ## What Is Included
 
 - Motion server (FastAPI, PS90-based): `servers/motion_server.py`
-- Spectrometer server (FastAPI, simulated): `servers/spectro_server.py`
+- Spectrometer server (FastAPI, Andor SDK2 + Shamrock-based): `servers/spectro_server.py`
 - FESTO pneumatic server (FastAPI, NI-DAQmx-based): `servers/festo_server.py`
 - Python clients: `clients/`
 - Interactive shell: `IRLab_shell.py`
@@ -37,6 +37,7 @@ python IRLab_shell.py
 - `config/servers.yaml`: default server URLs
 - `config/motors.yaml`: controllers, motors, and optional motion parameters
 - `config/festo.yaml`: NI-DAQ chassis and FESTO actuator channel mapping
+- `config/spectro.yaml`: Andor camera / Shamrock spectrograph device indices per named spectrometer
 - Environment overrides:
 	- `MOTION_SERVER`
 	- `SPECTRO_SERVER`
@@ -58,8 +59,13 @@ python IRLab_shell.py
 
 ## Main Spectrometer Endpoints
 
+- `GET /spectro/connect`
+- `GET /spectro/close`
+- `GET /spectro/load_config`
+- `GET /spectro/list`
 - `GET /acquire?exposure=0.1`
 - `GET /status`
+- `GET /state`
 
 ## Main FESTO Endpoints
 
