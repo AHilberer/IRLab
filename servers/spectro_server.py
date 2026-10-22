@@ -189,6 +189,12 @@ class Spectrometer:
         return wavelength, intensity
 
 
+def _to_list(values) -> list:
+    """Plain Python list of numbers, JSON-serializable: the SDKs may return numpy
+    arrays, whose elements (numpy.int32...) FastAPI cannot encode."""
+    return values.tolist() if hasattr(values, 'tolist') else [v for v in values]
+
+
 def get_spectrometer(name: str = None) -> Spectrometer:
     """Return a registered spectrometer by name. If name is None, use the default."""
     with _registry_lock:
@@ -319,8 +325,8 @@ def acquire(req: AcquireRequest):
             detail=f'Acquisition failed: {e}. If this persists, try /spectro/close then /spectro/connect.',
         )
     return {
-        "wavelength": list(wavelength),
-        "intensity": list(intensity),
+        "wavelength": _to_list(wavelength),
+        "intensity": _to_list(intensity),
     }
 
 

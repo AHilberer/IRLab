@@ -10,7 +10,7 @@ import time
 
 
 class FakePS90Serial:
-    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, timeout=1, **kwargs):
+    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, timeout=1, stop_polls=0, **kwargs):
         self.port = port
         self.timeout = timeout
         self.disconnected = False      # simulate an unplugged cable: no response at all
@@ -18,6 +18,7 @@ class FakePS90Serial:
         self.blocked = {}              # axis index -> (reached position, status char), e.g. limit switch
         self.n_axes = n_axes
         self.move_polls = move_polls   # number of ?ASTAT polls an axis stays in 'T'
+        self.stop_polls = stop_polls   # polls an axis stays in 'T' after STOP (deceleration)
         self.positions = [0] * n_axes
         self.setpoints = [0] * n_axes
         self.status = ['R'] * n_axes
@@ -87,8 +88,12 @@ class FakePS90Serial:
         if cmd.startswith('STOP'):
             axis = int(cmd[4:]) - 1
             if self.status[axis] == 'T':
-                self.status[axis] = 'R'
-                self.positions[axis] = (self.positions[axis] + self.setpoints[axis]) // 2
+                self.setpoints[axis] = (self.positions[axis] + self.setpoints[axis]) // 2
+                if self.stop_polls:
+                    self._remaining_polls[axis] = self.stop_polls
+                else:
+                    self.status[axis] = 'R'
+                    self.positions[axis] = self.setpoints[axis]
             return None
         if cmd.startswith('?'):
             return '0'

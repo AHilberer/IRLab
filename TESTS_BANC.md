@@ -228,3 +228,14 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Corrections après la revue globale
+
+- [ ] **Acquisition.** `spec.acquire(exposure=0.1)` renvoie bien un spectre (avant : erreur 500 probable si le SDK Andor renvoie des tableaux numpy).
+- [ ] **FESTO simultanés.** Depuis deux shells sur deux PC, lancer en même temps une boucle `for i in range(20): toggle(festo_1)` (sur un actionneur sans danger).
+  *Attendu :* aucune erreur NI-DAQmx « resource reserved ».
+- [ ] **Commandes non bloquées.** Après mise à jour, les `mv`, `on`, `init_all()` répondent normalement et apparaissent dans les logs avec leurs paramètres (vérifie le nouveau mécanisme de journalisation sur la version de Starlette installée sur le banc).
+
+Remarques / résultats :
+

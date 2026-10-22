@@ -81,6 +81,9 @@ class MoveRelRequest(BaseModel):
     delta: int       # displacement, in steps
 
 
+# Max time (s) to wait for an axis to come to rest after a stop sent on timeout
+STOP_SETTLE_TIMEOUT = 10.0
+
 # Per-motor defaults, overridable in config/motors.yaml
 DEFAULT_MAX_MOVE_DURATION = 120.0     # s; beyond this the axis is stopped and the move fails
 DEFAULT_POSITION_TOLERANCE_STEPS = 0  # accepted |final position - target|, in steps
@@ -244,6 +247,17 @@ class PS90_motor:
     def _send_stop(self):
         self.control_unit.send(PS90_STOP_AXIS_CMD.format(axis=self.control_axis_number))
 
+    def _wait_stopped(self, timeout=STOP_SETTLE_TIMEOUT):
+        """Wait until the axis is no longer moving (after a stop), at most `timeout` s."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            try:
+                if self._axis_status() != 'T':
+                    return
+            except Exception:
+                return
+            time.sleep(0.05)
+
     def _axis_status(self):
         return self.control_unit.get_status(self.control_axis_number)[self.control_axis_number-1]
 
@@ -306,6 +320,8 @@ class PS90_motor:
             while self._axis_status()=='T':
                 if time.monotonic() > deadline:
                     self._send_stop()
+                    # keep the motion lock until the axis is at rest: no new move during deceleration
+                    self._wait_stopped()
                     raise MotionError(self._motion_failure(
                         f'move not finished after {self.max_move_duration} s, stop sent', target_position))
                 time.sleep(0.05)
@@ -341,7 +357,6 @@ class PS90_motor:
 
 def get_controller(name: str = None):
     """Return a controller instance by name. If name is None, return the default controller if set."""
-    global default_controller_name
     if name is None:
         if default_controller_name is None:
             raise RuntimeError('No controller connected. Call /ps90/connect first.')
@@ -631,14 +646,15 @@ def motors_stop(motor: str):
 def motors_stop_all():
     """Stop all axes of all controllers."""
     errors = {}
+    # iterate over copies: /admin/reload_config may change the registries meanwhile
     if PS90_STOP_ALL_CMD:
-        for cname, ctrl in controllers.items():
+        for cname, ctrl in list(controllers.items()):
             try:
                 ctrl.send(PS90_STOP_ALL_CMD)
             except Exception as e:
                 errors[cname] = str(e)
     stopped = []
-    for name, m in motors.items():
+    for name, m in list(motors.items()):
         try:
             m.stop()
             stopped.append(name)
@@ -788,7 +804,7 @@ def shutdown_close_controllers():
     and clear the registry so serial ports are released when the server process exits (for
     example on Ctrl+C from uvicorn).
     """
-    for name, m in motors.items():
+    for name, m in list(motors.items()):
         if m.state == DeviceState.MOVING:
             try:
                 m.stop()

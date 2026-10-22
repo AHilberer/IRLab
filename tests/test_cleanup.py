@@ -1,6 +1,4 @@
 """Task 15: small bugs and cleanup."""
-import warnings
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -8,7 +6,7 @@ import clients.motion_client as mc
 import servers.festo_server as fs
 import servers.motion_server as ms
 from tests.test_registry import _route_requests_to
-from tests.test_server_startup import motion, MOTORS_YAML   # noqa: F401  (fixture)
+from tests.test_server_startup import MOTORS_YAML
 
 
 # ---------- festo_server ----------
@@ -146,3 +144,70 @@ def test_factored_actions(motion, monkeypatch):
         assert 'error' in mc.stop(mc.Motor('nope'))[0][1]
         with pytest.raises(ValueError):
             mc.free('sx')
+
+
+# ---------- fixes after the global review ----------
+
+class _FakeNiTask:
+    """Fake nidaqmx.Task failing like NI-DAQmx when two tasks use the same lines."""
+    active = 0
+    errors = 0
+
+    def __init__(self):
+        self.do_channels = self
+
+    def __enter__(self):
+        _FakeNiTask.active += 1
+        if _FakeNiTask.active > 1:
+            _FakeNiTask.errors += 1
+        return self
+
+    def __exit__(self, *exc):
+        _FakeNiTask.active -= 1
+
+    def add_do_chan(self, channel, line_grouping=None):
+        import time
+        time.sleep(0.005)
+
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+    def write(self, data):
+        pass
+
+    def read(self, number_of_samples_per_channel=1):
+        return [True, False]
+
+
+def test_festo_requests_do_not_overlap(monkeypatch):
+    import threading
+    import types
+    monkeypatch.setattr(fs, 'nidaqmx', types.SimpleNamespace(Task=_FakeNiTask))
+    monkeypatch.setattr(fs, 'LineGrouping', types.SimpleNamespace(CHAN_PER_LINE=None))
+    ctrl = fs.FestoNiDaqController('cDAQ1')
+    actuator = fs.FestoActuator('a', ctrl, 'Mod1', 'line0:1')
+    threads = [threading.Thread(target=f) for f in (actuator.set_on, actuator.set_off, actuator.toggle) * 5]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert _FakeNiTask.errors == 0
+
+
+def test_acquire_returns_plain_json_numbers(monkeypatch):
+    import numpy as np
+    import servers.spectro_server as ss
+
+    class FakeSpectrometer:
+        state = ss.DeviceState.ON
+
+        def acquire(self, exposure):
+            return np.linspace(500.0, 501.0, 3), np.array([1, 2, 3], dtype=np.int32)
+    monkeypatch.setattr(ss, 'spectrometers', {'main': FakeSpectrometer()})
+    monkeypatch.setattr(ss, 'default_spectrometer_name', 'main')
+    r = TestClient(ss.app).post('/acquire', json={'exposure': 0.1})
+    assert r.status_code == 200
+    assert r.json() == {'wavelength': [500.0, 500.5, 501.0], 'intensity': [1, 2, 3]}

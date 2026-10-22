@@ -1,11 +1,9 @@
 """Task 8: config loaded at server startup (lifespan), degraded mode, /status, reload."""
-import pytest
 from fastapi.testclient import TestClient
 
 import servers.festo_server as fs
 import servers.motion_server as ms
 import servers.spectro_server as ss
-from tests.fake_serial import FakePS90Serial
 
 MOTORS_YAML = """
 initialize_on_startup: {init}
@@ -22,28 +20,6 @@ motors:
     controller: main_ps90
     controller_channel: 3
 """
-
-
-@pytest.fixture
-def motion(monkeypatch, tmp_path):
-    for name, value in [('controllers', {}), ('motors', {}), ('controller_errors', {}),
-                        ('motor_errors', {}), ('default_controller_name', None),
-                        ('config_error', None), ('config_path', None)]:
-        monkeypatch.setattr(ms, name, value)
-    fake = FakePS90Serial(move_polls=2)
-    state = {'plugged': True}
-
-    def open_serial(*a, **kw):
-        if not state['plugged']:
-            raise OSError('could not open port FAKE_COM')
-        return fake
-    monkeypatch.setattr(ms.serial, 'Serial', open_serial)
-
-    def configure(init=False):
-        cfg = tmp_path / 'motors.yaml'
-        cfg.write_text(MOTORS_YAML.format(init=str(init).lower()))
-        monkeypatch.setenv('IRLAB_MOTORS_CONFIG', str(cfg))
-    return fake, state, configure
 
 
 def test_config_loaded_at_startup_and_moves_need_init(motion):

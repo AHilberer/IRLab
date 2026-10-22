@@ -126,3 +126,13 @@ def test_relative_move_uses_freshly_read_position(setup):
     r = client.post('/motors/move_rel/m1', json={'delta': 10})
     assert r.status_code == 200 and r.json()['position'] == 5010
     assert 'PSET1=5010' in fake.commands
+
+
+def test_timeout_keeps_the_motor_busy_until_the_axis_is_at_rest(setup):
+    fake, motors, client = setup
+    fake.move_polls = 10**9
+    fake.stop_polls = 10                 # the axis decelerates after STOP
+    motors['m1'].max_move_duration = 0.2
+    r = client.post('/motors/move_abs/m1', json={'position': 1000})
+    assert r.status_code == 500 and 'stop sent' in r.json()['detail']
+    assert fake.status[0] == 'R'         # the error is returned once the axis is at rest

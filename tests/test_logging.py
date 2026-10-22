@@ -5,7 +5,6 @@ from fastapi.testclient import TestClient
 
 import servers.motion_server as ms
 from common.logging_setup import get_log_dir
-from tests.test_server_startup import motion   # noqa: F401  (fixture)
 
 
 def _log_text():
@@ -45,3 +44,14 @@ def test_serial_debug_log_is_off_by_default_and_can_be_enabled(motion, tmp_path,
     assert 'FAKE_COM >> ?CNT2' in _log_text()
     assert "FAKE_COM << b'0\\r'" in _log_text()
     ms.serial_logger.setLevel(logging.WARNING)
+
+
+def test_start_line_logged_with_and_without_body(motion):
+    fake, state, configure = motion
+    configure()
+    with TestClient(ms.app) as client:
+        client.post('/motors/init/sy')
+        client.post('/motors/move_rel/sy', json={'delta': 7})
+    log = _log_text()
+    assert 'POST /motors/init/sy from testclient: started' in log
+    assert 'POST /motors/move_rel/sy {"delta":7} from testclient: started' in log

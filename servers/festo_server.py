@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 import os
+import threading
 
 from common.states import DeviceState
 from common.version import get_version
@@ -63,6 +64,10 @@ class FestoNiDaqController:
         if nidaqmx is None:
             raise RuntimeError('nidaqmx is required but not installed')
         self.chassis = chassis
+        # FastAPI runs `def` routes in a thread pool: two simultaneous requests would
+        # create two NI-DAQmx tasks on the same lines ("resource reserved" error).
+        # Reentrant so toggle() can hold it around its read + write.
+        self.lock = threading.RLock()
 
     def _channel(self, module: str, lines: str) -> str:
         return f"{self.chassis}{module}/port0/{lines}"
@@ -70,7 +75,7 @@ class FestoNiDaqController:
     def write(self, module: str, lines: str, state: bool):
         channel = self._channel(module, lines)
         data = [state, not state]
-        with nidaqmx.Task() as task:
+        with self.lock, nidaqmx.Task() as task:
             task.do_channels.add_do_chan(channel, line_grouping=LineGrouping.CHAN_PER_LINE)
             task.start()
             task.write(data)
@@ -82,7 +87,7 @@ class FestoNiDaqController:
         Returns True when the first (active) line is high.
         """
         channel = self._channel(module, lines)
-        with nidaqmx.Task() as task:
+        with self.lock, nidaqmx.Task() as task:
             task.do_channels.add_do_chan(channel, line_grouping=LineGrouping.CHAN_PER_LINE)
             result = task.read(number_of_samples_per_channel=1)
 
@@ -143,12 +148,14 @@ class FestoActuator:
         return state
 
     def toggle(self) -> bool:
-        state = self.read_state()
-        if state:
-            self.set_off()
-            return False
-        self.set_on()
-        return True
+        # read + write as one operation: no other request can act on the lines in between
+        with self.controller.lock:
+            state = self.read_state()
+            if state:
+                self.set_off()
+                return False
+            self.set_on()
+            return True
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +163,6 @@ class FestoActuator:
 # ---------------------------------------------------------------------------
 
 def get_controller(name: str = None) -> FestoNiDaqController:
-    global default_controller_name
     if name is None:
         if default_controller_name is None:
             raise RuntimeError('No FESTO controller connected. Call /festo/connect first.')

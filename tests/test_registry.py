@@ -1,7 +1,6 @@
 """Task 9: the servers are the single source of truth for motors and actuators."""
 from urllib.parse import urlsplit
 
-import pytest
 from fastapi.testclient import TestClient
 
 import clients.festo_client as fc
@@ -10,8 +9,7 @@ import common.http_client as hc
 import servers.festo_server as fs
 import servers.motion_server as ms
 import servers.spectro_server as ss
-from tests.fake_serial import FakePS90Serial
-from tests.test_server_startup import motion, FESTO_YAML   # noqa: F401  (fixture)
+from tests.test_server_startup import FESTO_YAML
 
 
 def _route_requests_to(monkeypatch, client):
