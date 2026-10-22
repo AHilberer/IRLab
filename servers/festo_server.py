@@ -1,7 +1,13 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 import os
+import threading
 
 from common.states import DeviceState
+from common.version import get_version
+from common.logging_setup import setup_logging, add_action_logging
+
+logger = setup_logging('festo_server')
 
 try:
     import nidaqmx
@@ -15,7 +21,16 @@ try:
 except Exception:
     yaml = None
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    # startup: load the FESTO config; never fails, errors are reported by /status
+    load_config()
+    yield
+    shutdown_close_controllers()
+
+
+app = FastAPI(lifespan=lifespan)
+add_action_logging(app, logger)
 
 # Registry of NI-DAQ controller instances (keyed by name)
 controllers = {}
@@ -24,7 +39,14 @@ default_controller_name = None
 # Registry of actuator instances (keyed by logical name)
 actuators = {}
 
+# default config path, overridable with $IRLAB_FESTO_CONFIG
 DEFAULT_FESTO_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'config', 'festo.yaml')
+
+# Result of the last config load, reported by /status
+config_path = None
+config_error = None        # config file missing / unreadable / invalid
+controller_errors = {}     # controller name -> error message
+actuator_errors = {}       # actuator name -> error message
 
 
 class FestoNiDaqController:
@@ -42,6 +64,10 @@ class FestoNiDaqController:
         if nidaqmx is None:
             raise RuntimeError('nidaqmx is required but not installed')
         self.chassis = chassis
+        # FastAPI runs `def` routes in a thread pool: two simultaneous requests would
+        # create two NI-DAQmx tasks on the same lines ("resource reserved" error).
+        # Reentrant so toggle() can hold it around its read + write.
+        self.lock = threading.RLock()
 
     def _channel(self, module: str, lines: str) -> str:
         return f"{self.chassis}{module}/port0/{lines}"
@@ -49,7 +75,7 @@ class FestoNiDaqController:
     def write(self, module: str, lines: str, state: bool):
         channel = self._channel(module, lines)
         data = [state, not state]
-        with nidaqmx.Task() as task:
+        with self.lock, nidaqmx.Task() as task:
             task.do_channels.add_do_chan(channel, line_grouping=LineGrouping.CHAN_PER_LINE)
             task.start()
             task.write(data)
@@ -61,7 +87,7 @@ class FestoNiDaqController:
         Returns True when the first (active) line is high.
         """
         channel = self._channel(module, lines)
-        with nidaqmx.Task() as task:
+        with self.lock, nidaqmx.Task() as task:
             task.do_channels.add_do_chan(channel, line_grouping=LineGrouping.CHAN_PER_LINE)
             result = task.read(number_of_samples_per_channel=1)
 
@@ -122,12 +148,14 @@ class FestoActuator:
         return state
 
     def toggle(self) -> bool:
-        state = self.read_state()
-        if state:
-            self.set_off()
-            return False
-        self.set_on()
-        return True
+        # read + write as one operation: no other request can act on the lines in between
+        with self.controller.lock:
+            state = self.read_state()
+            if state:
+                self.set_off()
+                return False
+            self.set_on()
+            return True
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +163,6 @@ class FestoActuator:
 # ---------------------------------------------------------------------------
 
 def get_controller(name: str = None) -> FestoNiDaqController:
-    global default_controller_name
     if name is None:
         if default_controller_name is None:
             raise RuntimeError('No FESTO controller connected. Call /festo/connect first.')
@@ -161,6 +188,8 @@ def _register_actuator_from_entry(entry: dict):
     controller_name = entry.get('controller') or entry.get('controller_name') or default_controller_name
     if controller_name is None:
         raise ValueError(f'No controller specified for actuator "{name}"')
+    if controller_name in controller_errors:
+        raise ValueError(f'Controller "{controller_name}" unavailable (see its error)')
     if controller_name not in controllers:
         raise ValueError(f'Controller "{controller_name}" not found for actuator "{name}"')
 
@@ -197,19 +226,27 @@ def _load_config_from_dict(cfg: dict):
         try:
             controllers[name] = FestoNiDaqController(chassis=chassis)
         except Exception as e:
-            raise ValueError(f'Failed to create NI-DAQ controller "{name}": {e}')
+            # degraded mode: keep going, actuators of this controller are skipped
+            controller_errors[name] = f'Failed to create NI-DAQ controller on {chassis}: {e}'
+            continue
+        controller_errors.pop(name, None)
 
         created_controllers.append(name)
         if default_controller_name is None:
             default_controller_name = name
 
     for entry in cfg.get('actuators', []):
+        name = str(entry.get('name', ''))
+        if not name or name in actuators:
+            continue
         try:
             registered = _register_actuator_from_entry(entry)
-        except ValueError as e:
-            raise ValueError(str(e))
+        except Exception as e:
+            actuator_errors[name] = str(e)
+            continue
         if registered:
             created_actuators.append(registered)
+            actuator_errors.pop(registered, None)
 
     return created_controllers, created_actuators
 
@@ -218,11 +255,13 @@ def _load_config_from_dict(cfg: dict):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get('/festo/connect')
-def festo_connect(name: str = 'festo', chassis: str = None):
-    """Instantiate a NI-DAQ controller for the given chassis (default: cDAQ1).
+@app.post('/festo/connect')
+def festo_connect(name: str = 'main_festo', chassis: str = None):
+    """Instantiate a NI-DAQ controller for the given chassis (default: $FESTO_CHASSIS or cDAQ1).
+    Debug / recovery: the controllers of config/festo.yaml are created at startup. The default
+    name is the one used in config/festo.yaml.
 
-    Example: /festo/connect?name=main&chassis=cDAQ1
+    Example: /festo/connect?name=main_festo&chassis=cDAQ1
     """
     global default_controller_name
 
@@ -243,7 +282,7 @@ def festo_connect(name: str = 'festo', chassis: str = None):
     return {'status': 'connected', 'name': name, 'chassis': chassis}
 
 
-@app.get('/festo/close')
+@app.post('/festo/close')
 def festo_close(name: str = None):
     global default_controller_name
 
@@ -252,17 +291,17 @@ def festo_close(name: str = None):
     if not name or name not in controllers:
         return {'status': 'not_connected'}
 
+    closed = controllers[name]
     try:
-        controllers[name].close()
+        closed.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Failed to close controller: {e}')
 
     del controllers[name]
 
-    # Remove actuators that referenced this controller.
-    for aname in [n for n, a in actuators.items() if a.controller is not controllers.get(name)]:
-        if actuators[aname].controller not in controllers.values():
-            del actuators[aname]
+    # Remove the actuators of the closed controller (recreated by /admin/reload_config).
+    for aname in [n for n, a in actuators.items() if a.controller is closed]:
+        del actuators[aname]
 
     if default_controller_name == name:
         default_controller_name = next(iter(controllers.keys()), None)
@@ -270,71 +309,47 @@ def festo_close(name: str = None):
     return {'status': 'closed', 'name': name}
 
 
-@app.get('/festo/load_config')
-def festo_load_config(path: str = None):
-    """Load controller and actuator definitions from config/festo.yaml.
+def load_config(path: str = None):
+    """Load controller and actuator definitions from the FESTO config.
 
-    Example: /festo/load_config
+    Never raises: errors are kept in config_error / controller_errors / actuator_errors
+    and reported by /status (degraded mode). Existing controllers and actuators are
+    kept, so calling it again retries only what failed.
     """
-    if yaml is None:
-        raise HTTPException(status_code=500, detail='pyyaml is not installed')
-
+    global config_path, config_error
     if path is None:
-        path = os.path.normpath(DEFAULT_FESTO_CONFIG)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f'Config not found: {path}')
-
+        path = os.environ.get('IRLAB_FESTO_CONFIG') or os.path.normpath(DEFAULT_FESTO_CONFIG)
+    config_path = path
     try:
+        if yaml is None:
+            raise RuntimeError('pyyaml is not installed')
         with open(path, 'r') as fh:
             cfg = yaml.safe_load(fh) or {}
+        created = _load_config_from_dict(cfg)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Failed to read config: {e}')
-
-    try:
-        created_controllers, created_actuators = _load_config_from_dict(cfg)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    return {
-        'status': 'loaded',
-        'controllers_created': created_controllers,
-        'actuators_created': created_actuators,
-    }
+        config_error = f'Failed to load config {path}: {e}'
+        logger.error(config_error)
+        return [], []
+    config_error = None
+    for name, err in controller_errors.items():
+        logger.error('Controller %s: %s', name, err)
+    for name, err in actuator_errors.items():
+        logger.error('Actuator %s: %s', name, err)
+    logger.info('Config %s loaded: %d controller(s), %d actuator(s)', path, len(controllers), len(actuators))
+    return created
 
 
-@app.get('/festo/actuators/register')
-def festo_register_actuator(name: str,
-                            controller_name: str = None,
-                            module: str = None,
-                            lines: str = None):
-    """Register a single actuator by NI-DAQ channel.
-
-    Example: /festo/actuators/register?name=valve_1&module=Mod1&lines=line0:1
-    """
-    if name in actuators:
-        return {'status': 'already_registered', 'name': name}
-
-    if not module or not lines:
-        raise HTTPException(status_code=400, detail='"module" and "lines" are required')
-
-    if controller_name is None:
-        controller_name = default_controller_name
-    if controller_name is None:
-        raise HTTPException(status_code=400, detail='No default controller; provide controller_name')
-    if controller_name not in controllers:
-        raise HTTPException(status_code=400, detail=f'Controller "{controller_name}" not found')
-
-    actuators[name] = FestoActuator(
-        name=name,
-        controller=controllers[controller_name],
-        module=module,
-        lines=lines,
-    )
-    return {'status': 'registered', 'name': name, 'module': module, 'lines': lines, 'controller': controller_name}
+@app.post('/admin/reload_config')
+def admin_reload_config():
+    """Retry loading the config (controllers / actuators that failed). Existing ones
+    are kept; restart the server to apply other changes of the config file."""
+    created_controllers, created_actuators = load_config()
+    return {'controllers_created': created_controllers, 'actuators_created': created_actuators, **status()}
 
 
 @app.get('/festo/actuators/list')
 def festo_list_actuators():
+    """Registered actuators: the single source of truth used by the shell."""
     out = []
     for name, a in actuators.items():
         ctrl_name = next((cn for cn, ci in controllers.items() if ci is a.controller), None)
@@ -348,7 +363,7 @@ def festo_list_controllers():
     return {'controllers': out}
 
 
-@app.get('/festo/actuators/on/{actuator_name}')
+@app.post('/festo/actuators/on/{actuator_name}')
 def festo_set_on(actuator_name: str):
     a = get_actuator(actuator_name)
     try:
@@ -358,7 +373,7 @@ def festo_set_on(actuator_name: str):
     return {'actuator': actuator_name, 'state': 'on', 'device_state': a.state.value}
 
 
-@app.get('/festo/actuators/off/{actuator_name}')
+@app.post('/festo/actuators/off/{actuator_name}')
 def festo_set_off(actuator_name: str):
     a = get_actuator(actuator_name)
     try:
@@ -368,7 +383,7 @@ def festo_set_off(actuator_name: str):
     return {'actuator': actuator_name, 'state': 'off', 'device_state': a.state.value}
 
 
-@app.get('/festo/actuators/toggle/{actuator_name}')
+@app.post('/festo/actuators/toggle/{actuator_name}')
 def festo_toggle(actuator_name: str):
     a = get_actuator(actuator_name)
     try:
@@ -390,7 +405,20 @@ def festo_state(actuator_name: str):
 
 @app.get('/status')
 def status():
-    return 'This confirms connection to the FESTO NI-DAQmx server. Use /festo/actuators/* endpoints.'
+    """Server status: version, config, controllers (connected or in error) and actuators."""
+    ctrl = [{'name': n, 'chassis': c.chassis, 'state': 'connected'} for n, c in controllers.items()]
+    ctrl += [{'name': n, 'state': 'error', 'error': e}
+             for n, e in controller_errors.items() if n not in controllers]
+    degraded = bool(config_error or controller_errors or actuator_errors)
+    return {
+        'server': 'festo_server',
+        'version': get_version(),
+        'status': 'degraded' if degraded else 'ok',
+        'config': config_path,
+        'config_error': config_error,
+        'controllers': ctrl,
+        'actuators': {'registered': list(actuators), 'errors': dict(actuator_errors)},
+    }
 
 
 @app.get('/state')
@@ -410,7 +438,6 @@ def get_state():
     return {'state': overall.value}
 
 
-@app.on_event('shutdown')
 def shutdown_close_controllers():
     global default_controller_name
     for name in list(controllers.keys()):

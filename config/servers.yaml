@@ -1,6 +1,14 @@
-# Default server endpoints used by clients
-# Override using environment variables (MOTION_SERVER, SPECTRO_SERVER, FESTO_SERVER)
+# Server endpoints used by the clients and the shell, and port used by the
+# start_*.ps1 scripts to launch each server.
+# Override with environment variables (MOTION_SERVER, SPECTRO_SERVER, FESTO_SERVER).
+#
+# Use the machine NAMES of the bench (resolved by the Windows `hosts` file on each
+# PC), not IP addresses. The names below are examples:
+# REPLACE pc-moteurs / pc-spectro with the names of the bench PCs.
+# Example hosts entries (C:\Windows\System32\drivers\etc\hosts):
+#   192.168.1.2   pc-moteurs
+#   192.168.1.3   pc-spectro
 
-motion_server: "http://192.168.1.2:8001"
-spectro_server: "http://192.168.1.3:8002"
-festo_server: "http://192.168.1.2:8003"
+motion_server: "http://pc-moteurs:8001"
+spectro_server: "http://pc-spectro:8002"
+festo_server: "http://pc-moteurs:8003"

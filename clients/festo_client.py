@@ -1,12 +1,5 @@
-import os
-
-from common.http_client import safe_get, DEFAULT_TIMEOUT
+from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
-
-try:
-    import yaml
-except Exception:
-    yaml = None
 
 BASE_URL = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
 
@@ -29,15 +22,15 @@ class PneumaticActuator:
         self.lines = lines
 
     def on(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/on/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/on/{self.name}", timeout=timeout)
         return r.json()
 
     def off(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/off/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/off/{self.name}", timeout=timeout)
         return r.json()
 
     def toggle(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/toggle/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/toggle/{self.name}", timeout=timeout)
         return r.json()
 
     def state(self, timeout=DEFAULT_TIMEOUT):
@@ -52,56 +45,23 @@ class PneumaticActuator:
 Actuator = PneumaticActuator
 
 
-def build_actuator_list_from_config(path: str = None, register_on_server: bool = True):
-    """Load actuator definitions from config/festo.yaml.
-
-    Returns a dict mapping actuator name -> PneumaticActuator instance.
-    If register_on_server=True, each actuator is also registered on the FESTO server.
-    """
-    if path is None:
-        path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', 'config', 'festo.yaml'))
-
-    if not os.path.exists(path):
-        raise FileNotFoundError(f'FESTO config not found: {path}')
-
-    if yaml is None:
-        raise RuntimeError('pyyaml is required to load FESTO config')
-
-    with open(path, 'r') as fh:
-        cfg = yaml.safe_load(fh) or {}
-
-    result = {}
-    for entry in cfg.get('actuators', []):
-        name = str(entry.get('name', ''))
+def load_actuators_from_server(timeout=DEFAULT_TIMEOUT):
+    """Create the PneumaticActuator objects from the FESTO server's /festo/actuators/list
+    (the single source of truth). Returns a dict name -> PneumaticActuator.
+    Raises if the server is unreachable."""
+    r = safe_get(f"{BASE_URL}/festo/actuators/list", timeout=timeout)
+    actuators = {}
+    for entry in r.json().get('actuators', []):
+        name = entry.get('name')
         if not name:
             continue
-
-        module = entry.get('module')
-        lines = str(entry.get('lines', ''))
-        controller_name = entry.get('controller') or entry.get('controller_name')
-
-        actuator = PneumaticActuator(
+        actuators[name] = PneumaticActuator(
             name=name,
-            controller_name=controller_name,
-            module=module,
-            lines=lines,
+            controller_name=entry.get('controller'),
+            module=entry.get('module'),
+            lines=entry.get('lines'),
         )
-        result[name] = actuator
-
-        if register_on_server:
-            params = {'name': name}
-            if controller_name:
-                params['controller_name'] = controller_name
-            if module:
-                params['module'] = module
-            if lines:
-                params['lines'] = lines
-            try:
-                safe_get(f"{BASE_URL}/festo/actuators/register", params=params, timeout=DEFAULT_TIMEOUT)
-            except Exception:
-                pass
-
-    return result
+    return actuators
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +74,7 @@ def on(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/on/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/on/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))
@@ -127,7 +87,7 @@ def off(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/off/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/off/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))
@@ -140,7 +100,7 @@ def toggle(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/toggle/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/toggle/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))

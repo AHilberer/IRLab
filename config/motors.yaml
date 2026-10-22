@@ -1,48 +1,78 @@
-# Sample motor configuration for IRLab motion server
-# name: logical name used in API endpoints
-# axis: PS90 axis number (integer)
-# step_to_mm: conversion factor (optional)
+# Motor configuration for the IRLab motion server
+#
+# controllers: one entry per OWIS PS90 (name, type: ps90, port: COM port, baud,
+#              optional timeout / command_delay).
+# motors: one entry per axis:
+#   name                      logical name used in the shell and the API endpoints
+#   controller                name of the controller (see "controllers")
+#   controller_channel        PS90 axis number (integer)
+#   unit                      unit of the positions given to mv / mvr and returned by
+#                             motor.position(): mm, deg, steps...
+#   step_to_mm                size of one step in that unit (mm per step, deg per step...;
+#                             1 for a motor in steps): steps = position / step_to_mm
+#   velocity, acceleration    optional, sent to the PS90 at startup (PVEL / ACC)
+#   max_move_duration         optional, max duration of a move in s, then the axis is
+#                             stopped (default 120)
+#   position_tolerance_steps  optional, accepted final position error in steps (default 0)
+
+# Initialize the axes (AXIS=1, INIT if not ready, absolute mode) when the server
+# starts. INIT powers the motors and activates their position control loop (it does
+# not move them). false (default): done on purpose from the shell with init_all() /
+# init(motor), e.g. after checking the bench. Moves are refused until then.
+initialize_on_startup: false
+
+# Log every command sent to the PS90 and its response (DEBUG level, in
+# logs/motion_server.log). Verbose: enable only to diagnose a problem.
+log_serial: false
 
 controllers:
   - name: main_ps90
     type: ps90
     port: COM25
     baud: 9600
+    # timeout: 1.0          # serial read timeout (s) for queries
+    # command_delay: 0.05   # pause (s) after commands without response
 
 motors:
   - name: faty
     controller: main_ps90
     controller_channel: 1
+    unit: steps
     step_to_mm: 1.0
     velocity: 838861
     acceleration: 215
   - name: focdy
     controller: main_ps90
     controller_channel: 5
+    unit: steps
     step_to_mm: 1.0
     velocity: 419430
     acceleration: 4000
   - name: focuy
     controller: main_ps90
     controller_channel: 6
+    unit: steps
     step_to_mm: 1.0
     velocity: 419430
     acceleration: 4000
   - name: sx
     controller: main_ps90
     controller_channel: 2
+    unit: mm
     step_to_mm: 0.00005
     velocity: 1677722
     acceleration: 2000
   - name: sy
     controller: main_ps90
     controller_channel: 3
+    unit: mm
     step_to_mm: 0.00005
     velocity: 1677722
     acceleration: 2000
   - name: sz
     controller: main_ps90
     controller_channel: 4
+    unit: mm
     step_to_mm: 0.000025
     velocity: 419430
     acceleration: 2000

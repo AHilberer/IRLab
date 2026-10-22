@@ -1,8 +1,13 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import os
 import threading
 
 from common.states import DeviceState
+from common.version import get_version
+from common.logging_setup import setup_logging, add_action_logging
+
+logger = setup_logging('spectro_server')
 
 try:
     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
@@ -24,6 +29,7 @@ except Exception:
     yaml = None
 
 app = FastAPI()
+add_action_logging(app, logger)
 
 # Serializes all raw Andor SDK2 hardware calls (connect/close/acquire):
 # FastAPI's sync endpoints run on a thread pool, and SDK2 calls are not
@@ -183,6 +189,12 @@ class Spectrometer:
         return wavelength, intensity
 
 
+def _to_list(values) -> list:
+    """Plain Python list of numbers, JSON-serializable: the SDKs may return numpy
+    arrays, whose elements (numpy.int32...) FastAPI cannot encode."""
+    return values.tolist() if hasattr(values, 'tolist') else [v for v in values]
+
+
 def get_spectrometer(name: str = None) -> Spectrometer:
     """Return a registered spectrometer by name. If name is None, use the default."""
     with _registry_lock:
@@ -195,7 +207,7 @@ def get_spectrometer(name: str = None) -> Spectrometer:
         return spectrometers[name]
 
 
-@app.get('/spectro/connect')
+@app.post('/spectro/connect')
 def spectro_connect(name: str = 'main', camera_index: int = 0, spectrograph_index: int = None):
     """Connect a camera (and optional spectrograph) and register it under `name`.
 
@@ -217,7 +229,7 @@ def spectro_connect(name: str = 'main', camera_index: int = 0, spectrograph_inde
     return {'status': 'connected', 'name': name, 'camera_index': camera_index, 'spectrograph_index': spectrograph_index}
 
 
-@app.get('/spectro/close')
+@app.post('/spectro/close')
 def spectro_close(name: str = None):
     """Close a named spectrometer (or the default). Use this together with
     /spectro/connect to recover a wedged connection without restarting the server."""
@@ -264,7 +276,7 @@ def _load_spectro_config_from_dict(cfg: dict):
     return created
 
 
-@app.get('/spectro/load_config')
+@app.post('/spectro/load_config')
 def spectro_load_config(path: str = None):
     """Load spectrometer definitions from config/spectro.yaml and connect them."""
     if yaml is None:
@@ -292,8 +304,15 @@ def spectro_list():
         return {'spectrometers': [{'name': n, 'state': s.state.value} for n, s in spectrometers.items()]}
 
 
-@app.get("/acquire")
-def acquire(exposure: float = 0.1, name: str = None):
+class AcquireRequest(BaseModel):
+    exposure: float = 0.1    # s
+    name: str = None         # spectrometer name; None = default one
+
+
+@app.post("/acquire")
+def acquire(req: AcquireRequest):
+    """Acquire a spectrum (body: {"exposure": s, "name": optional spectrometer name})."""
+    exposure, name = req.exposure, req.name
     try:
         spec = get_spectrometer(name)
     except Exception as e:
@@ -306,14 +325,22 @@ def acquire(exposure: float = 0.1, name: str = None):
             detail=f'Acquisition failed: {e}. If this persists, try /spectro/close then /spectro/connect.',
         )
     return {
-        "wavelength": list(wavelength),
-        "intensity": list(intensity),
+        "wavelength": _to_list(wavelength),
+        "intensity": _to_list(intensity),
     }
 
 
 @app.get("/status")
 def status():
-    return "This confirms connection to the spectro server."
+    """Server status: version and registered spectrometers with their state."""
+    with _registry_lock:
+        specs = [{"name": n, "state": sp.state.value} for n, sp in spectrometers.items()]
+    return {
+        "server": "spectro_server",
+        "version": get_version(),
+        "status": "ok" if specs else "no spectrometer connected",
+        "spectrometers": specs,
+    }
 
 
 @app.get("/state")
