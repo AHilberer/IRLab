@@ -8,7 +8,14 @@ except Exception:
     yaml = None
 
 BASE_URL = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
-DEFAULT_MOTION_TIMEOUT = 60
+# Default max duration of a move, used until the motor's own value (from the
+# server's /motors/list) is known. Same default as the motion server.
+DEFAULT_MAX_MOVE_DURATION = 120.0
+# Extra time (s) the client waits beyond the server's max move duration, so the
+# server reports its own timeout/stop before the HTTP request gives up.
+MOTION_TIMEOUT_MARGIN = 30.0
+# timeout='auto' (default of mv/mvr): max_move_duration of the motor + MOTION_TIMEOUT_MARGIN
+DEFAULT_MOTION_TIMEOUT = 'auto'
 
 
 def build_motor_list_from_config(path: str = None, register_on_server: bool = True):
@@ -40,7 +47,8 @@ def build_motor_list_from_config(path: str = None, register_on_server: bool = Tr
                   velocity=velocity or 1.0,
                   acceleration=acceleration or 1.0,
                   step_to_mm=step,
-                  controller_name=controller)
+                  controller_name=controller,
+                  max_move_duration=float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION)))
         motors[name] = m
         if register_on_server:
             # register on server using generic motors/register endpoint
@@ -74,6 +82,13 @@ def _read_motor_position(motor):
     return {'steps': steps, 'mm': mm}
 
 
+def _move_timeout(motor, timeout):
+    """HTTP timeout for a move request of `motor`."""
+    if timeout == 'auto':
+        return float(getattr(motor, 'max_move_duration', DEFAULT_MAX_MOVE_DURATION)) + MOTION_TIMEOUT_MARGIN
+    return timeout
+
+
 def _motion_error(motor, exc):
     """Convert a failed move request into a MotionError with a readable message."""
     if isinstance(exc, ServerError):
@@ -103,7 +118,9 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise
 
     Each motor argument must be a `Motor` instance and each position a number.
     Positions are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
-    `timeout=None` waits indefinitely for the server response.
+    `timeout='auto'` (default) waits for the motor's max move duration plus
+    MOTION_TIMEOUT_MARGIN; a number sets it in seconds; `timeout=None` waits
+    indefinitely for the server response.
     A failed move raises MotionError (remaining motors are not moved); with
     `raise_on_error=False` errors are returned in the results list instead.
     Ctrl+C stops the motors and re-raises KeyboardInterrupt.
@@ -139,7 +156,7 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise
             steps = int(pos)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=timeout)
+            r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=_move_timeout(motor, timeout))
             results.append((motor.name, r.json()))
         except KeyboardInterrupt:
             _stop_on_interrupt(motors)
@@ -160,7 +177,9 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, rais
 
     Each motor argument must be a `Motor` instance and each delta a number.
     Deltas are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
-    `timeout=None` waits indefinitely for the server response.
+    `timeout='auto'` (default) waits for the motor's max move duration plus
+    MOTION_TIMEOUT_MARGIN; a number sets it in seconds; `timeout=None` waits
+    indefinitely for the server response.
     A failed move raises MotionError (remaining motors are not moved); with
     `raise_on_error=False` errors are returned in the results list instead.
     Ctrl+C stops the motors and re-raises KeyboardInterrupt.
@@ -196,7 +215,7 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, rais
             steps = int(delta)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=timeout)
+            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=_move_timeout(motor, timeout))
             results.append((motor.name, r.json()))
         except KeyboardInterrupt:
             _stop_on_interrupt(motors)
@@ -333,7 +352,8 @@ class Motor:
                  velocity=1.0,
                  acceleration=1.0,
                  step_to_mm=1.0,
-                 controller_name: str = None):
+                 controller_name: str = None,
+                 max_move_duration=DEFAULT_MAX_MOVE_DURATION):
         self.name = name
         self.controler_type = controler_type
         self.controler_channel = controler_channel
@@ -343,3 +363,5 @@ class Motor:
         self.step_to_mm = step_to_mm
         # optional controller name (for registration or reference)
         self.controller_name = controller_name
+        # server-side max duration of a move (s), used for the client HTTP timeout
+        self.max_move_duration = max_move_duration

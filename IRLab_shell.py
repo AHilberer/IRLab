@@ -2,7 +2,7 @@
 # startup with 'python IRLab_shell.py'
 
 import IPython
-from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, Motor
+from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, Motor, DEFAULT_MAX_MOVE_DURATION
 from common.errors import MotionError
 from clients.spectro_client import Spectrometer
 from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
@@ -103,7 +103,8 @@ if motor_server_ok:
                 step = float(entry.get('step_to_mm', 1.0))
                 axis = entry.get('axis')
                 controller_name = entry.get('controller')
-                m = Motor(name=name, controler_channel=axis, step_to_mm=step, controller_name=controller_name)
+                m = Motor(name=name, controler_channel=axis, step_to_mm=step, controller_name=controller_name,
+                          max_move_duration=float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION)))
                 motors[name] = m
                 globals()[name] = m
                 print(f"  [OK] Motor '{name}'  (axis {axis}, controller: {controller_name}, step_to_mm: {step})")

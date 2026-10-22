@@ -683,6 +683,7 @@ def motors_list():
             "axis": m.control_axis_number,
             "step_to_mm": m.step_to_mm,
             "controller": ctrl_name,
+            "max_move_duration": m.max_move_duration,
         })
     return {"motors": out}
 

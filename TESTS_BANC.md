@@ -116,3 +116,15 @@ Tests :
 
 Remarques / résultats :
 
+---
+
+## Tâche 7 : timeouts côté client adaptés
+
+- [ ] **Longue exposition.** `spec.acquire(exposure=8)`.
+  *Attendu :* le spectre est renvoyé, sans timeout (avant : échec systématique au-delà de 5 s).
+- [ ] **Long déplacement.** Un déplacement de plus d'une minute (grande course et/ou vitesse réduite).
+  *Attendu :* `mv()` aboutit sans timeout côté client (avant : abandon à 60 s pendant que le moteur bougeait encore).
+  Le timeout client vaut maintenant `max_move_duration` du moteur (120 s par défaut, réglable dans `config/motors.yaml`) + 30 s. Pour un déplacement de plus de 2 min, augmenter `max_move_duration` pour ce moteur.
+
+Remarques / résultats :
+
