@@ -83,8 +83,7 @@ in `config/servers.yaml` with the real names of the bench PCs.
 - `POST /admin/reload_config`
 - `GET /ps90/connect`
 - `GET /ps90/close`
-- `GET /ps90/load_config`
-- `GET /motors/list`
+- `GET /motors/list` (name, axis, controller, step_to_mm, unit, max_move_duration, state)
 - `GET /motors/init/{motor}`
 - `GET /motors/read/{motor}`
 - `GET /motors/move_abs/{motor}/{position}`
@@ -110,10 +109,8 @@ in `config/servers.yaml` with the real names of the bench PCs.
 - `POST /admin/reload_config`
 - `GET /festo/connect`
 - `GET /festo/close`
-- `GET /festo/load_config`
 - `GET /festo/controllers/list`
 - `GET /festo/actuators/list`
-- `GET /festo/actuators/register`
 - `GET /festo/actuators/on/{actuator}`
 - `GET /festo/actuators/off/{actuator}`
 - `GET /festo/actuators/toggle/{actuator}`

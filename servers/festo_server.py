@@ -326,25 +326,6 @@ def load_config(path: str = None):
     return created
 
 
-@app.get('/festo/load_config')
-def festo_load_config(path: str = None):
-    """Load controller and actuator definitions from config/festo.yaml.
-    The server already loads its config at startup; prefer /admin/reload_config to retry after an error.
-
-    Example: /festo/load_config
-    """
-    created_controllers, created_actuators = load_config(path)
-    if config_error:
-        raise HTTPException(status_code=400, detail=config_error)
-    return {
-        'status': 'loaded',
-        'controllers_created': created_controllers,
-        'actuators_created': created_actuators,
-        'controller_errors': controller_errors,
-        'actuator_errors': actuator_errors,
-    }
-
-
 @app.post('/admin/reload_config')
 def admin_reload_config():
     """Retry loading the config (controllers / actuators that failed). Existing ones
@@ -353,39 +334,9 @@ def admin_reload_config():
     return {'controllers_created': created_controllers, 'actuators_created': created_actuators, **status()}
 
 
-@app.get('/festo/actuators/register')
-def festo_register_actuator(name: str,
-                            controller_name: str = None,
-                            module: str = None,
-                            lines: str = None):
-    """Register a single actuator by NI-DAQ channel.
-
-    Example: /festo/actuators/register?name=valve_1&module=Mod1&lines=line0:1
-    """
-    if name in actuators:
-        return {'status': 'already_registered', 'name': name}
-
-    if not module or not lines:
-        raise HTTPException(status_code=400, detail='"module" and "lines" are required')
-
-    if controller_name is None:
-        controller_name = default_controller_name
-    if controller_name is None:
-        raise HTTPException(status_code=400, detail='No default controller; provide controller_name')
-    if controller_name not in controllers:
-        raise HTTPException(status_code=400, detail=f'Controller "{controller_name}" not found')
-
-    actuators[name] = FestoActuator(
-        name=name,
-        controller=controllers[controller_name],
-        module=module,
-        lines=lines,
-    )
-    return {'status': 'registered', 'name': name, 'module': module, 'lines': lines, 'controller': controller_name}
-
-
 @app.get('/festo/actuators/list')
 def festo_list_actuators():
+    """Registered actuators: the single source of truth used by the shell."""
     out = []
     for name, a in actuators.items():
         ctrl_name = next((cn for cn, ci in controllers.items() if ci is a.controller), None)

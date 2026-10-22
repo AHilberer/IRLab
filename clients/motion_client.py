@@ -1,11 +1,6 @@
 from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 from common.errors import ServerError, MotionError, MotorBusyError
-import os
-try:
-    import yaml
-except Exception:
-    yaml = None
 
 BASE_URL = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
 # Default max duration of a move, used until the motor's own value (from the
@@ -18,52 +13,21 @@ MOTION_TIMEOUT_MARGIN = 30.0
 DEFAULT_MOTION_TIMEOUT = 'auto'
 
 
-def build_motor_list_from_config(path: str = None, register_on_server: bool = True):
-    """Load local motor definitions from a YAML file and optionally register them on the motion server.
-
-    Returns a dict mapping motor name -> Motor instance.
-    """
-    if path is None:
-        path = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
-        path = os.path.normpath(path)
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Motor config not found: {path}")
-    if yaml is None:
-        raise RuntimeError('pyyaml is required to load motor config')
-    with open(path, 'r') as fh:
-        cfg = yaml.safe_load(fh)
-
+def load_motors_from_server(timeout=DEFAULT_TIMEOUT):
+    """Create the Motor objects from the motion server's /motors/list (the single
+    source of truth). Returns a dict name -> Motor. Raises if the server is unreachable."""
+    r = safe_get(f"{BASE_URL}/motors/list", timeout=timeout)
     motors = {}
-    for entry in cfg.get('motors', []):
+    for entry in r.json().get('motors', []):
         name = entry.get('name')
-        controller = entry.get('controller') or entry.get('controller_name')
-        axis = int(entry.get('controller_channel') or entry.get('controler_channel') or entry.get('axis'))
-        step = float(entry.get('step_to_mm', 1.0))
-        velocity = entry.get('velocity')
-        acceleration = entry.get('acceleration')
-        m = Motor(name=name,
-                  controler_type='PS90',
-                  controler_channel=axis,
-                  velocity=velocity or 1.0,
-                  acceleration=acceleration or 1.0,
-                  step_to_mm=step,
-                  controller_name=controller,
-                  max_move_duration=float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION)))
-        motors[name] = m
-        if register_on_server:
-            # register on server using generic motors/register endpoint
-            params = []
-            params.append(f"name={name}")
-            params.append(f"axis={axis}")
-            params.append(f"step_to_mm={step}")
-            if controller:
-                params.append(f"controller_name={controller}")
-            controller_type = entry.get('controller_type') or entry.get('controler_type')
-            if controller_type:
-                # include controller_type only if no controller name specified (simple behavior: server expects controller_name)
-                params.append(f"controller_type={controller_type}")
-            url = f"{BASE_URL}/motors/register?{'&'.join(params)}"
-            safe_get(url, timeout=DEFAULT_TIMEOUT)
+        if not name:
+            continue
+        motors[name] = Motor(name=name,
+                             controler_channel=entry.get('axis'),
+                             step_to_mm=float(entry.get('step_to_mm', 1.0)),
+                             controller_name=entry.get('controller'),
+                             max_move_duration=float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION)),
+                             unit=entry.get('unit'))
     return motors
 
 
@@ -381,7 +345,8 @@ class Motor:
                  acceleration=1.0,
                  step_to_mm=1.0,
                  controller_name: str = None,
-                 max_move_duration=DEFAULT_MAX_MOVE_DURATION):
+                 max_move_duration=DEFAULT_MAX_MOVE_DURATION,
+                 unit: str = None):
         self.name = name
         self.controler_type = controler_type
         self.controler_channel = controler_channel
@@ -393,3 +358,8 @@ class Motor:
         self.controller_name = controller_name
         # server-side max duration of a move (s), used for the client HTTP timeout
         self.max_move_duration = max_move_duration
+        # user unit reported by the server (display only)
+        self.unit = unit
+
+    def __repr__(self):
+        return f"Motor(name={self.name!r})"

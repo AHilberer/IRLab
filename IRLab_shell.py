@@ -1,15 +1,17 @@
 # IRLab_shell.py
 # startup with 'python IRLab_shell.py'
 
+import builtins
+import keyword
+
 import IPython
-from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, init, init_all, Motor, DEFAULT_MAX_MOVE_DURATION
+from clients.motion_client import load_motors_from_server, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, init, init_all, Motor
 from common.errors import MotionError
 from clients.spectro_client import Spectrometer
-from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
+from clients.festo_client import load_actuators_from_server, PneumaticActuator, on, off, toggle, state
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 from scripts.base_scripts import ascan, dscan, tweak
-import os
 
 print("""
  █████ ███████████   █████                 █████    
@@ -56,7 +58,8 @@ def _describe_status(data):
 try:
     motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
     r = safe_get(f"{motion_url}/status", timeout=STARTUP_TIMEOUT)
-    print(f"Motor server running: {_describe_status(r.json())}")
+    motion_status = r.json()
+    print(f"Motor server running: {_describe_status(motion_status)}")
     motor_server_ok = True
 except Exception:
     print("Motor server NOT reachable")
@@ -97,56 +100,40 @@ print("-----------------------------------------------------")
 print("Building controlers and motor objects...")
 print("-----------------------------------------------------")
 
-# Build or obtain motors. Prefer server-side single source-of-truth by asking the motion
-# server to load its config and then using /motors/list to populate local Motor objects.
+def _expose(name, obj):
+    """Make a motor / actuator available by its name in the shell, unless the name is not
+    a valid Python identifier or would overwrite something else (mv, wm, spec, a builtin...).
+    It is always available as motors[name] / actuators[name]."""
+    if not name.isidentifier() or keyword.iskeyword(name):
+        print(f"  [WARN] '{name}' is not a valid Python name: use motors['{name}'] / actuators['{name}']")
+        return False
+    existing = globals().get(name, getattr(builtins, name, None))
+    # replacing an object of the same kind (e.g. after reconnecting) is fine
+    if existing is not None and type(existing) is not type(obj):
+        print(f"  [WARN] '{name}' would overwrite the existing '{name}' ({type(existing).__name__}): "
+              f"not exposed, use motors['{name}'] / actuators['{name}']")
+        return False
+    globals()[name] = obj
+    return True
+
+
+# The motion server is the single source of truth: it loads config/motors.yaml at startup.
 motors = {}
 if motor_server_ok:
     try:
-        motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
-        # the server loads its config at startup; get the registered motors from it
-        try:
-            r = safe_get(f"{motion_url}/motors/list", timeout=5)
-            data = r.json()
-            for entry in data.get('motors', []):
-                name = entry.get('name')
-                step = float(entry.get('step_to_mm', 1.0))
-                axis = entry.get('axis')
-                controller_name = entry.get('controller')
-                m = Motor(name=name, controler_channel=axis, step_to_mm=step, controller_name=controller_name,
-                          max_move_duration=float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION)))
-                motors[name] = m
-                globals()[name] = m
-                print(f"  [OK] Motor '{name}'  (axis {axis}, controller: {controller_name}, step_to_mm: {step})")
-            if not motors:
-                print("  (no motors registered on server)")
-            not_initialized = [e.get('name') for e in data.get('motors', []) if e.get('state') == 'off']
-            if not_initialized:
-                print(f"  [INFO] Not initialized yet: {', '.join(not_initialized)}")
-                print("         Run init_all() (or init(motor)) before moving them. INIT can move the axes.")
-        except Exception:
-            # fallback: try local config and register on server (best-effort)
-            try:
-                motors = build_motor_list_from_config(register_on_server=True)
-                for _name, _motor in motors.items():
-                    globals()[_name] = _motor
-                    print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
-                if not motors:
-                    print("  (no motors found in config)")
-            except Exception as e:
-                print(f"  [WARN] Failed to load/register motors from config: {e}")
-                motors = {}
-    except Exception:
-        # completely offline: try local config without registering
-        try:
-            motors = build_motor_list_from_config(register_on_server=False)
-            for _name, _motor in motors.items():
-                globals()[_name] = _motor
-                print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
-            if not motors:
-                print("  (no motors found in config)")
-        except Exception as e:
-            print(f"  [WARN] Failed to load local motors from config: {e}")
-            motors = {}
+        motors = load_motors_from_server(timeout=5)
+    except Exception as e:
+        print(f"  [WARN] Failed to get the motors from the motion server: {e}")
+    for name, m in motors.items():
+        _expose(name, m)
+        print(f"  [OK] Motor '{name}'  (axis {m.controler_channel}, controller: {m.controller_name}, "
+              f"step_to_mm: {m.step_to_mm}, unit: {m.unit})")
+    if not motors:
+        print("  (no motors registered on server)")
+    not_initialized = (motion_status.get('motors') or {}).get('not_initialized', [])
+    if not_initialized:
+        print(f"  [INFO] Not initialized yet: {', '.join(not_initialized)}")
+        print("         Run init_all() (or init(motor)) before moving them. INIT can move the axes.")
 else:
     raise Exception(f"Motion server not reachable, cannot load motors from server")
 
@@ -154,43 +141,18 @@ print("-----------------------------------------------------")
 print("Building FESTO actuator objects...")
 print("-----------------------------------------------------")
 
+# The FESTO server is the single source of truth: it loads config/festo.yaml at startup.
 actuators = {}
 if festo_server_ok:
     try:
-        festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
-        # The server loads its config at startup. Retrieve the registered actuators and expose them as named objects in the shell.
-        try:
-            r = safe_get(f"{festo_url}/festo/actuators/list", timeout=5)
-            data = r.json()
-            for entry in data.get('actuators', []):
-                name = entry.get('name')
-                if not name:
-                    continue
-                a = PneumaticActuator(
-                    name=name,
-                    controller_name=entry.get('controller'),
-                    module=entry.get('module'),
-                    lines=entry.get('lines'),
-                )
-                actuators[name] = a
-                globals()[name] = a
-                print(f"  [OK] Actuator '{name}'  ({entry.get('controller')}/{entry.get('module')}/port0/{entry.get('lines')})")
-            if not actuators:
-                print("  (no actuators registered on server)")
-        except Exception:
-            try:
-                actuators = build_actuator_list_from_config(register_on_server=True)
-                for _name, _actuator in actuators.items():
-                    globals()[_name] = _actuator
-                    print(f"  [OK] Actuator '{_name}'  ({_actuator.module}/port0/{_actuator.lines})")
-                if not actuators:
-                    print("  (no actuators found in config)")
-            except Exception as e:
-                print(f"  [WARN] Failed to load/register FESTO actuators: {e}")
-                actuators = {}
+        actuators = load_actuators_from_server(timeout=5)
     except Exception as e:
-        print(f"  [WARN] FESTO initialization failed: {e}")
-        actuators = {}
+        print(f"  [WARN] Failed to get the actuators from the FESTO server: {e}")
+    for name, a in actuators.items():
+        _expose(name, a)
+        print(f"  [OK] Actuator '{name}'  ({a.controller_name}/{a.module}/port0/{a.lines})")
+    if not actuators:
+        print("  (no actuators registered on server)")
 
 STATE_CHECK_TIMEOUT = 2
 

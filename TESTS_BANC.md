@@ -152,3 +152,18 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 9 : simplifier l'enregistrement des moteurs et le shell
+
+Le shell ne lit plus `config/motors.yaml` / `config/festo.yaml` : il crée ses objets uniquement à partir de `/motors/list` et `/festo/actuators/list`. Les endpoints `/ps90/register`, `/ps90/list`, `/ps90/load_config`, `/motors/register`, `/festo/load_config` et `/festo/actuators/register` n'existent plus.
+
+- [ ] **Mêmes objets qu'avant.** Lancer le shell.
+  *Attendu :* les mêmes moteurs (`faty`, `focdy`, `focuy`, `sx`, `sy`, `sz`) et actionneurs (`festo_1` à `festo_10`) sont créés ; chaque ligne moteur affiche aussi son unité. `mv`, `wm`, `on`, `off` fonctionnent comme avant.
+- [ ] **`/motors/list`.** Dans un navigateur, `http://pc-moteurs:8001/motors/list`.
+  *Attendu :* chaque moteur a `unit` et `state` en plus des champs habituels.
+- [ ] **Reconnexion du PS90 sans redémarrer le serveur** (remplace « `/ps90/close` puis reconnexion » de la tâche 2). Sur `http://pc-moteurs:8001/docs` : `GET /ps90/close` (name = `main_ps90`), puis `POST /admin/reload_config`, puis `init_all()` dans le shell.
+  *Attendu :* les moteurs disparaissent après le `close`, réapparaissent après le `reload_config`, et fonctionnent après `init_all()`. Relancer le shell (ou `reconnect()`, tâche 10) pour retrouver les objets à jour.
+
+Remarques / résultats :
+

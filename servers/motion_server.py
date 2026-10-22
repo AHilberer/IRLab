@@ -34,7 +34,7 @@ app = FastAPI(lifespan=lifespan)
 controllers = {}
 default_controller_name = None
 
-# registry of named motor objects (create once via /ps90/register)
+# registry of named motor objects (created from the config file, see load_config)
 motors = {}
 
 # default config path (relative to repo root), overridable with $IRLAB_MOTORS_CONFIG
@@ -132,11 +132,14 @@ class PS90:
 class PS90_motor:
     def __init__(self, name, control_unit, control_axis_number, step_to_mm=1,
                  max_move_duration=DEFAULT_MAX_MOVE_DURATION,
-                 position_tolerance_steps=DEFAULT_POSITION_TOLERANCE_STEPS):
+                 position_tolerance_steps=DEFAULT_POSITION_TOLERANCE_STEPS,
+                 unit=None):
         self.control_unit = control_unit
         self.name = name
         self.control_axis_number = control_axis_number
         self.step_to_mm = step_to_mm
+        # user unit, for display by the clients; by default the one implied by step_to_mm
+        self.unit = unit or ('mm' if float(step_to_mm) != 1.0 else 'steps')
         self.max_move_duration = max_move_duration
         self.position_tolerance_steps = position_tolerance_steps
         # set by stop(); checked by the end-of-move loop
@@ -359,13 +362,16 @@ def ps90_close(name: str = None):
     if name not in controllers:
         return {"status": "not_connected"}
 
+    closed = controllers[name]
     try:
-        controllers[name].close()
+        closed.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Error closing controller: {e}')
 
-    # remove from registry and update default if needed
+    # remove from registry (and its motors, recreated by /admin/reload_config) and update default if needed
     del controllers[name]
+    for mname in [n for n, m in motors.items() if m.control_unit is closed]:
+        del motors[mname]
     if default_controller_name == name:
         default_controller_name = None
         # pick another default if available
@@ -381,33 +387,10 @@ def ps90_status():
     return {"status": c.get_status()}
 
 
-@app.get("/ps90/register/{name}/{axis}")
-def ps90_register(name: str, axis: int, step_to_mm: float = 1.0, controller_name: str = None):
-    """Register a named motor backed by an existing controller instance.
-    If `controller_name` is omitted the default controller is used.
-    Example: /ps90/register/sx/1?controller_name=main&step_to_mm=0.01
-    """
-    if name in motors:
-        return {"status": "already_registered", "name": name}
-    try:
-        ctrl = get_controller(controller_name)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step_to_mm)
-    motors[name] = motor
-    return {"status": "registered", "name": name, "axis": axis, "controller": controller_name}
-
-
 def get_motor(name: str) -> PS90_motor:
     if name not in motors:
-        raise HTTPException(status_code=404, detail=f'Motor "{name}" not registered. Call /ps90/register/{{name}}/{{axis}}')
+        raise HTTPException(status_code=404, detail=f'Motor "{name}" not registered (see config/motors.yaml and /status)')
     return motors[name]
-
-
-@app.get("/ps90/list")
-def ps90_list():
-    """List registered motors."""
-    return {"motors": [{"name": n, "axis": m.control_axis_number, "step_to_mm": m.step_to_mm} for n, m in motors.items()]}
 
 
 def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
@@ -505,7 +488,8 @@ def _register_motor_from_entry(entry: dict, initialize: bool = False):
     ctrl = controllers[controller_name]
     motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step,
                        max_move_duration=max_move_duration,
-                       position_tolerance_steps=position_tolerance_steps)
+                       position_tolerance_steps=position_tolerance_steps,
+                       unit=entry.get('unit'))
     motors[name] = motor
     # apply motion parameters if provided
     try:
@@ -557,18 +541,6 @@ def load_config(path: str = None, initialize: bool = None):
     for name, err in motor_errors.items():
         print(f'Motor {name}: {err}')
     return created
-
-
-@app.get("/ps90/load_config")
-def ps90_load_config(path: str = None, initialize: bool = False):
-    """Load motor definitions from a YAML file and register them. If `initialize=true`, call initialize on each new motor.
-    The server already loads its config at startup; prefer /admin/reload_config to retry after an error.
-    """
-    created = load_config(path, initialize=initialize)
-    if config_error:
-        raise HTTPException(status_code=400, detail=config_error)
-    return {"status": "loaded", "created": created,
-            "controller_errors": controller_errors, "motor_errors": motor_errors}
 
 
 @app.post("/admin/reload_config")
@@ -684,63 +656,10 @@ def motors_control(motor: str):
     return {"status": "controlled", "motor": motor}
 
 
-@app.get("/motors/register")
-def motors_register(name: str,
-                   controller_type: str = None,
-                   controller_name: str = None,
-                   controller_port: str = None,
-                   controller_baud: int = 9600,
-                   axis: int = None,
-                   step_to_mm: float = 1.0,
-                   velocity: float = None,
-                   acceleration: float = None):
-    """Generic motor registration endpoint.
-
-    Examples:
-      /motors/register?name=sx&controller_name=main_ps90&axis=2
-      /motors/register?name=mx&controller_type=ps90&controller_port=COM25&axis=1
-    """
-    if not name or axis is None:
-        raise HTTPException(status_code=400, detail='name and axis are required')
-    if name in motors:
-        return {"status": "already_registered", "name": name}
-
-    # Resolve controller
-    ctrl = None
-    if controller_name:
-        if controller_name in controllers:
-            ctrl = controllers[controller_name]
-        else:
-            # no controller with that name exists -> error (simple behavior)
-            raise HTTPException(status_code=400, detail=f'Controller "{controller_name}" not found')
-    else:
-        # no controller name provided, try to use controller_type
-        # require explicit controller_name; do not auto-create based on controller_type in simple mode
-        raise HTTPException(status_code=400, detail='controller_name is required for registration in simple mode')
-
-    # create motor object
-    try:
-        motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step_to_mm)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-    motors[name] = motor
-
-    # apply motion parameters if provided
-    try:
-        if velocity is not None:
-            ctrl.send(f'PVEL{axis}={velocity}')
-        if acceleration is not None:
-            ctrl.send(f'ACC{axis}={acceleration}')
-    except Exception:
-        pass
-
-    return {"status": "registered", "name": name, "axis": axis, "controller": controller_name or controller_type}
-
-
 @app.get("/motors/list")
 def motors_list():
-    """Return registered motors and their controller mappings."""
+    """Return registered motors: controller mapping, unit, limits and state.
+    This is the single source of truth used by the shell to create its Motor objects."""
     out = []
     for name, m in motors.items():
         # find controller name by identity
@@ -753,6 +672,7 @@ def motors_list():
             "name": name,
             "axis": m.control_axis_number,
             "step_to_mm": m.step_to_mm,
+            "unit": m.unit,
             "controller": ctrl_name,
             "max_move_duration": m.max_move_duration,
             "state": m.state.value,
