@@ -247,3 +247,21 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 17 : scripts de démarrage et documentation
+
+(Les scripts `.ps1` n'ont pas pu être exécutés hors Windows : ces tests sont les premiers à les faire tourner.)
+
+- [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\start_motion.ps1"`.
+  *Attendu :* le serveur démarre sur le port de `config/servers.yaml` (8001).
+- [ ] **`.venv` absent.** Renommer temporairement `.venv` en `.venv_old`, lancer `start_motion.ps1`.
+  *Attendu :* message rouge « Python virtual environment not found ... », pas de traceback. Remettre `.venv`.
+- [ ] **Port explicite.** `.\start_motion.ps1 -Port 8011` démarre sur 8011 (l'arrêter ensuite).
+- [ ] **Politique d'exécution.** Si Windows refuse le script : `powershell -ExecutionPolicy Bypass -File .\start_motion.ps1` fonctionne.
+- [ ] **Pare-feu.** Appliquer la règle du README (section Firewall) sur `pc-moteurs` et `pc-spectro`, puis lancer le shell depuis un autre PC : les trois serveurs sont joignables.
+- [ ] **(Optionnel) Démarrage automatique.** Si souhaité, créer la tâche planifiée du README pour un serveur, fermer la session puis la rouvrir : le serveur démarre tout seul.
+- [ ] **README.** Relire les sections « Architecture » (noms des PC), « Points to check on the hardware » et « Upgrading from the previous version ».
+
+Remarques / résultats :
+
