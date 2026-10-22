@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 import time
 import os
+import threading
 
 from common.states import DeviceState
 
@@ -27,10 +28,18 @@ motors = {}
 DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
 
 
+class MotorBusyError(RuntimeError):
+    """Raised when a motion is requested on a motor that is already moving."""
+
+
 class PS90:
     def __init__(self, port='COM25', baudrate=9600):
         if serial is None:
             raise RuntimeError("pyserial is required but not installed")
+        # FastAPI runs `def` routes in a thread pool: every exchange on the serial
+        # port must hold this lock so concurrent requests cannot interleave.
+        # Reentrant so multi-command sequences can hold it around several send().
+        self.lock = threading.RLock()
         self.ser = serial.Serial(port, baudrate,
                     timeout=1,
                     stopbits=1,
@@ -40,10 +49,11 @@ class PS90:
 
     def send(self, cmd):
         full_cmd = cmd + '\r'   # OWIS uses CR as end character
-        self.ser.reset_input_buffer()
-        self.ser.write(full_cmd.encode())
-        time.sleep(0.05)
-        response = self.ser.read_all().decode().strip()
+        with self.lock:
+            self.ser.reset_input_buffer()
+            self.ser.write(full_cmd.encode())
+            time.sleep(0.05)
+            response = self.ser.read_all().decode().strip()
         return response
 
     def read(self):
@@ -57,8 +67,9 @@ class PS90:
             return response
 
     def init_axis(self, axis):
-        self.send(f'AXIS{axis}=1')
-        self.send(f'INIT{axis}')
+        with self.lock:
+            self.send(f'AXIS{axis}=1')
+            self.send(f'INIT{axis}')
         return
 
 
@@ -74,27 +85,42 @@ class PS90_motor:
         self.step_to_mm = step_to_mm
         self.current_position_step = None
         self.state = DeviceState.OFF
+        # Only one motion at a time per motor; a second request fails fast (HTTP 409).
+        self.motion_lock = threading.Lock()
+
+    def _acquire_motion_lock(self):
+        if not self.motion_lock.acquire(blocking=False):
+            raise MotorBusyError(f'Motor {self.name} is busy (a motion is already in progress)')
 
 
     def initialize_axis(self):
+        # INIT can move the axis: refuse while a motion is in progress
+        self._acquire_motion_lock()
         try:
-            control_unit_status = self.control_unit.get_status()
-            if control_unit_status[self.control_axis_number-1] != 'R':
-                try:
-                    self.control_unit.init_axis(self.control_axis_number)
-                    print(f'Initialized motor {self.name}')
-                except:
-                    print(f'Failed to initilaize moto {self.name}')
-            else:
-                print(f'Motor {self.name} already initialized')
-            self.set_absolute_mode()
-            self.read_current_position()
+            with self.control_unit.lock:
+                control_unit_status = self.control_unit.get_status()
+                if control_unit_status[self.control_axis_number-1] != 'R':
+                    try:
+                        self.control_unit.init_axis(self.control_axis_number)
+                        print(f'Initialized motor {self.name}')
+                    except:
+                        print(f'Failed to initilaize moto {self.name}')
+                else:
+                    print(f'Motor {self.name} already initialized')
+                self.set_absolute_mode()
+                self.read_current_position()
         except Exception:
             self.state = DeviceState.FAULT
             raise
+        finally:
+            self.motion_lock.release()
         self.state = DeviceState.ON
     
     def read_parameters(self):
+        with self.control_unit.lock:
+            self._read_parameters()
+
+    def _read_parameters(self):
         print('------------------------------------------')
         print(f'Parameters for {self.name}, PS90 motor axis {self.control_axis_number}')
         control_unit_status = self.control_unit.get_status()
@@ -113,8 +139,12 @@ class PS90_motor:
         self.control_unit.send(f'AXIS{self.control_axis_number}=0')
 
     def control(self):
-        self.control_unit.send(f'AXIS{self.control_axis_number}=1')
-        self.control_unit.send(f'INIT{self.control_axis_number}')
+        # INIT can move the axis: refuse while a motion is in progress
+        self._acquire_motion_lock()
+        try:
+            self.control_unit.init_axis(self.control_axis_number)
+        finally:
+            self.motion_lock.release()
     
     def set_absolute_mode(self):
         self.control_unit.send(f'ABSOL{self.control_axis_number}')
@@ -127,11 +157,22 @@ class PS90_motor:
         return self.current_position_step
         
     def move_absolute(self, target_position:int):
+        self._acquire_motion_lock()
+        try:
+            return self._move_absolute(target_position)
+        finally:
+            self.motion_lock.release()
+
+    def _move_absolute(self, target_position:int):
+        # caller must hold self.motion_lock
         print(f"Moving {self.name} to {target_position}")
         self.state = DeviceState.MOVING
         try:
-            self.control_unit.send(f'PSET{self.control_axis_number}={target_position}')
-            self.control_unit.send(f'PGO{self.control_axis_number}')
+            with self.control_unit.lock:
+                self.control_unit.send(f'PSET{self.control_axis_number}={target_position}')
+                self.control_unit.send(f'PGO{self.control_axis_number}')
+            # the serial lock is taken and released at each ?ASTAT poll, so that
+            # reads (wm) and other axes stay available during the motion
             while self.control_unit.send(f'?ASTAT')[self.control_axis_number-1]=='T':
                     time.sleep(0.05)
             actual_pos = self.read_current_position()
@@ -147,11 +188,15 @@ class PS90_motor:
             print('Wrong final position')
     
     def move_relative(self, displacement_step:int):
-        # Ensure reference position is known before computing relative target.
-        if self.current_position_step is None:
-            self.read_current_position()
-        target_position = self.current_position_step + displacement_step
-        self.move_absolute(target_position)
+        self._acquire_motion_lock()
+        try:
+            # Ensure reference position is known before computing relative target.
+            if self.current_position_step is None:
+                self.read_current_position()
+            target_position = self.current_position_step + displacement_step
+            return self._move_absolute(target_position)
+        finally:
+            self.motion_lock.release()
 
 
 def get_controller(name: str = None):
@@ -380,6 +425,8 @@ def motors_move_abs(motor: str, position: int):
     m = get_motor(motor)
     try:
         res = m.move_absolute(position)
+    except MotorBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"result": res}
@@ -390,6 +437,8 @@ def motors_move_rel(motor: str, delta: int):
     m = get_motor(motor)
     try:
         m.move_relative(delta)
+    except MotorBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"result": "move_command_sent", "motor": motor}
@@ -410,6 +459,8 @@ def motors_init(motor: str):
     m = get_motor(motor)
     try:
         m.initialize_axis()
+    except MotorBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "initialized", "motor": motor}
@@ -432,6 +483,8 @@ def motors_control(motor: str):
     m = get_motor(motor)
     try:
         m.control()
+    except MotorBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"status": "controlled", "motor": motor}
