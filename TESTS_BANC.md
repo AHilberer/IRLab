@@ -167,3 +167,16 @@ Le shell ne lit plus `config/motors.yaml` / `config/festo.yaml` : il crée ses o
 
 Remarques / résultats :
 
+---
+
+## Tâche 10 : shell tolérant à un serveur absent
+
+- [ ] **Seul le serveur FESTO démarré.** Arrêter les serveurs moteurs et spectro, lancer le shell.
+  *Attendu :* avertissements « Motion server NOT reachable », « Spectro server NOT reachable », mais le shell démarre ; le récapitulatif indique `FESTO server OK`, `0 motor(s), 10 actuator(s)`. `on(festo_1)` / `off(festo_1)` fonctionnent.
+- [ ] **`reconnect()`.** Démarrer ensuite le serveur moteurs, puis `reconnect()` dans le même shell.
+  *Attendu :* les moteurs apparaissent (`sx`, `sy`...), le récapitulatif indique `Motion server OK` et `6 motor(s)`. Après `init_all()`, `mv` fonctionne.
+- [ ] **Aucun serveur.** Lancer le shell sans aucun serveur démarré.
+  *Attendu :* le shell démarre quand même (0 moteur, 0 actionneur) en environ 2 s par serveur absent, sans exception.
+
+Remarques / résultats :
+
