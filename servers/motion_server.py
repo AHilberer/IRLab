@@ -122,6 +122,7 @@ class PS90_motor:
         self.position_tolerance_steps = position_tolerance_steps
         # set by stop(); checked by the end-of-move loop
         self._stop_requested = threading.Event()
+        # last position read, for information only: never used as a motion reference
         self.current_position_step = None
         self.state = DeviceState.OFF
         # Only one motion at a time per motor; a second request fails fast (HTTP 409).
@@ -273,10 +274,9 @@ class PS90_motor:
     def move_relative(self, displacement_step:int):
         self._acquire_motion_lock()
         try:
-            # Ensure reference position is known before computing relative target.
-            if self.current_position_step is None:
-                self.read_current_position()
-            target_position = self.current_position_step + displacement_step
+            # Always re-read the position: the cached current_position_step may be stale
+            # (axis moved by hand after free(), interrupted move, other client...).
+            target_position = self.read_current_position() + displacement_step
             return self._move_absolute(target_position)
         finally:
             self.motion_lock.release()

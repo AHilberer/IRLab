@@ -85,3 +85,15 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 5 : mouvement relatif sur position relue
+
+- [ ] **Déplacement à la main.** `free(m)`, déplacer l'axe à la main, puis `control(m)` et `mvr(m, petite_valeur)`.
+  *Attendu :* le déplacement part bien de la nouvelle position (vérifier avec `wm(m)` avant et après : écart = `petite_valeur`).
+  ⚠️ `control()` envoie `INIT`, qui peut déplacer l'axe : faire `wm(m)` **après** `control(m)` pour avoir la vraie position de départ.
+- [ ] **Après un arrêt.** Lancer un long `mv`, l'arrêter avec `stop(m)` depuis un autre shell, puis `mvr(m, petite_valeur)`.
+  *Attendu :* le déplacement part de la position où le moteur s'est arrêté.
+
+Remarques / résultats :
+

@@ -113,3 +113,13 @@ def test_stop_endpoints_reject_get(setup):
     fake, motors, client = setup
     assert client.get('/motors/stop/m1').status_code == 405
     assert client.get('/motors/stop_all').status_code == 405
+
+
+def test_relative_move_uses_freshly_read_position(setup):
+    """Task 5: the axis moved without the server knowing (by hand after free())."""
+    fake, motors, client = setup
+    assert client.get('/motors/move_abs/m1/100').json()['position'] == 100
+    fake.positions[0] = 5000          # moved by hand
+    r = client.get('/motors/move_rel/m1/10')
+    assert r.status_code == 200 and r.json()['position'] == 5010
+    assert 'PSET1=5010' in fake.commands
