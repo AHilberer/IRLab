@@ -39,7 +39,7 @@ def bench(monkeypatch):
     bench_hooks = {}
     moves = []          # targets of the absolute moves sent, in steps
     monkeypatch.setattr(hc.requests, 'request', fake_request)
-    motor = mc.Motor('m1', controler_channel=1, step_to_mm=1.0)
+    motor = mc.Motor('m1', controller_channel=1, step_to_mm=1.0)
     bench_hooks['moves'] = moves
     return fake, motor, requests_seen, bench_hooks
 

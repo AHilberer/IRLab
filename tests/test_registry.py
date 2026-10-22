@@ -40,7 +40,7 @@ def test_load_motors_from_server(motion, monkeypatch):
     assert sorted(motors) == ['sx', 'sy']
     sx = motors['sx']
     assert isinstance(sx, mc.Motor)
-    assert (sx.controler_channel, sx.controller_name, sx.max_move_duration, sx.unit) == (2, 'main_ps90', 300, 'steps')
+    assert (sx.controller_channel, sx.controller_name, sx.max_move_duration, sx.unit) == (2, 'main_ps90', 300, 'steps')
 
 
 def test_close_controller_then_reload_recreates_motors(motion):

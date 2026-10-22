@@ -211,3 +211,20 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 15 : petits bugs et nettoyage
+
+- [ ] **Unités.** `config/motors.yaml` indique maintenant `unit:` pour chaque moteur (`mm` pour `sx`, `sy`, `sz`, `steps` pour `faty`, `focdy`, `focuy`). **Vérifier que ces unités sont les bonnes** (en particulier pour `faty`, `focdy`, `focuy` : s'ils devraient être en mm ou en degrés, renseigner `unit` et `step_to_mm`).
+- [ ] **`mv(m, 2)` = `mv(m, 2.0)`.** Sur un moteur en mm, `mv(sx, 1)` puis `wm(sx)`, puis `mv(sx, 1.0)` : même position. `sx.position()` renvoie la position en mm.
+- [ ] **Scans et `tweak`.** Un petit `dscan(sx, -0.1, 0.1, 3)` revient bien à la position de départ ; `tweak(sx)` affiche les positions dans l'unité du moteur.
+- [ ] **Paramètres d'un axe.** Ouvrir `http://pc-moteurs:8001/motors/parameters/sx`.
+  *Attendu :* JSON avec le mode, la vitesse, l'accélération, les compteurs. **Noter** la réponse à `?MODE` (absolu / relatif) pour la doc.
+- [ ] **Vitesse / accélération.** Après démarrage du serveur moteurs, `/status` ne contient pas d'erreur `Failed to set PVEL...` ; les valeurs de `/motors/parameters/<moteur>` correspondent à `velocity` / `acceleration` de `config/motors.yaml`.
+- [ ] **Deuxième serveur moteurs.** Avec un serveur moteurs déjà lancé, en démarrer un second sur le même PC (autre port : `.\start_motion.ps1 -Port 8011`).
+  *Attendu :* le second démarre en mode dégradé, et son `/status` indique « Serial port COM25 is already in use by another program (is another motion server already running?) ». L'arrêter ensuite.
+- [ ] **Échec d'initialisation visible.** (Si l'occasion se présente : axe débranché, alimentation coupée...) `init(m)` affiche l'erreur au lieu de la passer sous silence ; le moteur passe en `fault`.
+- [ ] **FESTO `close`.** Sur `http://pc-moteurs:8003/docs` : `POST /festo/close` (name = `main_festo`), puis `GET /festo/actuators/list` → vide ; puis `POST /admin/reload_config` → les actionneurs reviennent.
+
+Remarques / résultats :
+

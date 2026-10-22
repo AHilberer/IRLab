@@ -103,7 +103,7 @@ def _connect_motion():
     for name, m in loaded.items():
         motors[name] = m
         _expose(name, m)
-        print(f"  [OK] Motor '{name}'  (axis {m.controler_channel}, controller: {m.controller_name}, "
+        print(f"  [OK] Motor '{name}'  (axis {m.controller_channel}, controller: {m.controller_name}, "
               f"step_to_mm: {m.step_to_mm}, unit: {m.unit})")
     if not loaded:
         print("  (no motors registered on server)")

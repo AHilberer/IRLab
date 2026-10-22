@@ -69,7 +69,7 @@ in `config/servers.yaml` with the real names of the bench PCs.
 ## Configuration
 
 - `config/servers.yaml`: server URLs (machine names) and ports
-- `config/motors.yaml`: controllers, motors, and optional motion parameters
+- `config/motors.yaml`: controllers (serial port), motors (axis, unit, step size) and optional motion parameters
 - `config/festo.yaml`: NI-DAQ chassis and FESTO actuator channel mapping
 - `config/spectro.yaml`: Andor camera / Shamrock spectrograph device indices per named spectrometer
 - Environment overrides:
@@ -104,6 +104,7 @@ each server's `/docs` page.
 - `GET /state`
 - `GET /motors/list` (name, axis, controller, step_to_mm, unit, max_move_duration, state)
 - `GET /motors/read/{motor}`
+- `GET /motors/parameters/{motor}` (mode, velocity, acceleration, counters read from the PS90)
 - `GET /controllers/list`, `GET /ps90/status`
 - `POST /motors/move_abs/{motor}` body `{"position": <steps>}`
 - `POST /motors/move_rel/{motor}` body `{"delta": <steps>}`
@@ -136,7 +137,9 @@ each server's `/docs` page.
 
 In `IRLab_shell.py`, these are available directly:
 
-- `mv(...)` move one or more motors
+- `mv(...)` move one or more motors. Positions are always in the motor's unit
+  (`unit` in `config/motors.yaml`: mm, deg, steps...), so `mv(m, 2)` and `mv(m, 2.0)` are the same
+- `motor.position()` current position of a motor, in its unit
 - `mvr(...)` move one or more motors relatively
 - `wm(...)` read motor positions
 - `free(...)` release one or more motors

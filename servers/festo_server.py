@@ -250,10 +250,12 @@ def _load_config_from_dict(cfg: dict):
 # ---------------------------------------------------------------------------
 
 @app.post('/festo/connect')
-def festo_connect(name: str = 'festo', chassis: str = None):
-    """Instantiate a NI-DAQ controller for the given chassis (default: cDAQ1).
+def festo_connect(name: str = 'main_festo', chassis: str = None):
+    """Instantiate a NI-DAQ controller for the given chassis (default: $FESTO_CHASSIS or cDAQ1).
+    Debug / recovery: the controllers of config/festo.yaml are created at startup. The default
+    name is the one used in config/festo.yaml.
 
-    Example: /festo/connect?name=main&chassis=cDAQ1
+    Example: /festo/connect?name=main_festo&chassis=cDAQ1
     """
     global default_controller_name
 
@@ -283,17 +285,17 @@ def festo_close(name: str = None):
     if not name or name not in controllers:
         return {'status': 'not_connected'}
 
+    closed = controllers[name]
     try:
-        controllers[name].close()
+        closed.close()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f'Failed to close controller: {e}')
 
     del controllers[name]
 
-    # Remove actuators that referenced this controller.
-    for aname in [n for n, a in actuators.items() if a.controller is not controllers.get(name)]:
-        if actuators[aname].controller not in controllers.values():
-            del actuators[aname]
+    # Remove the actuators of the closed controller (recreated by /admin/reload_config).
+    for aname in [n for n, a in actuators.items() if a.controller is closed]:
+        del actuators[aname]
 
     if default_controller_name == name:
         default_controller_name = next(iter(controllers.keys()), None)

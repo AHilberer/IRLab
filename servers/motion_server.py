@@ -86,8 +86,15 @@ DEFAULT_MAX_MOVE_DURATION = 120.0     # s; beyond this the axis is stopped and t
 DEFAULT_POSITION_TOLERANCE_STEPS = 0  # accepted |final position - target|, in steps
 
 
+def _port_in_use(exc) -> bool:
+    """True if a pyserial open error means the port is already opened by another process."""
+    text = str(exc).lower()
+    return any(k in text for k in ('permissionerror', 'access is denied', 'accès refusé',
+                                   'resource busy', 'errno 16'))
+
+
 class PS90:
-    def __init__(self, port='COM25', baudrate=9600,
+    def __init__(self, port, baudrate=9600,
                  timeout=PS90_DEFAULT_TIMEOUT, command_delay=PS90_DEFAULT_COMMAND_DELAY):
         if serial is None:
             raise RuntimeError("pyserial is required but not installed")
@@ -97,11 +104,17 @@ class PS90:
         self.lock = threading.RLock()
         self.port = port
         self.command_delay = command_delay
-        self.ser = serial.Serial(port, baudrate,
-                    timeout=timeout,
-                    stopbits=1,
-                    parity='N',
-                    bytesize=8)
+        try:
+            self.ser = serial.Serial(port, baudrate,
+                        timeout=timeout,
+                        stopbits=1,
+                        parity='N',
+                        bytesize=8)
+        except serial.SerialException as e:
+            if _port_in_use(e):
+                raise RuntimeError(f'Serial port {port} is already in use by another program '
+                                   f'(is another motion server already running?): {e}') from e
+            raise
         time.sleep(1)  # allow connection to settle
 
     def send(self, cmd):
@@ -123,9 +136,6 @@ class PS90:
             raise TimeoutError(f'No complete response from PS90 to "{cmd}" '
                                f'within {self.ser.timeout} s (received: {raw!r})')
         return raw.decode(errors='replace').strip()
-
-    def read(self):
-        return
 
     def get_status(self, axis=None):
         """Return the ?ASTAT string (one character per axis). If `axis` is given,
@@ -181,37 +191,38 @@ class PS90_motor:
             with self.control_unit.lock:
                 control_unit_status = self.control_unit.get_status(self.control_axis_number)
                 if control_unit_status[self.control_axis_number-1] != 'R':
-                    try:
-                        self.control_unit.init_axis(self.control_axis_number)
-                        logger.info('Initialized motor %s', self.name)
-                    except:
-                        logger.error('Failed to initialize motor %s', self.name)
+                    self.control_unit.init_axis(self.control_axis_number)
+                    logger.info('Initialized motor %s', self.name)
                 else:
                     logger.info('Motor %s already initialized', self.name)
                 self.set_absolute_mode()
                 self.read_current_position()
         except Exception:
             self.state = DeviceState.FAULT
+            logger.exception('Failed to initialize motor %s', self.name)
             raise
         finally:
             self.motion_lock.release()
         self.state = DeviceState.ON
     
-    def read_parameters(self):
-        with self.control_unit.lock:
-            self._read_parameters()
-
-    def _read_parameters(self):
+    def read_parameters(self) -> dict:
+        """Read the axis parameters from the PS90 (raw responses)."""
         axis = self.control_axis_number
-        control_unit_status = self.control_unit.get_status(axis)
-        logger.info('Parameters for %s, PS90 motor axis %d: status code %s, mode %s (ABSOL/RELAT), '
-                    'velocity %s, acceleration %s, deceleration %s, limit switch release speed %s, '
-                    'setpoint %s, position counter %s, encoder position %s',
-                    self.name, axis, control_unit_status[axis-1],
-                    self.control_unit.send(f'?MODE{axis}'), self.control_unit.send(f'?PVEL{axis}'),
-                    self.control_unit.send(f'?ACC{axis}'), self.control_unit.send(f'?DACC{axis}'),
-                    self.control_unit.send(f'?FVEL{axis}'), self.control_unit.send(f'?PSET{axis}'),
-                    self.control_unit.send(f'?CNT{axis}'), self.control_unit.send(f'?ENCPOS{axis}'))
+        with self.control_unit.lock:
+            control_unit_status = self.control_unit.get_status(axis)
+            return {
+                'motor': self.name,
+                'axis': axis,
+                'status_code': control_unit_status[axis-1],
+                'mode': self.control_unit.send(f'?MODE{axis}'),          # set with ABSOL<n> or RELAT<n>
+                'velocity': self.control_unit.send(f'?PVEL{axis}'),
+                'acceleration': self.control_unit.send(f'?ACC{axis}'),
+                'deceleration': self.control_unit.send(f'?DACC{axis}'),
+                'limit_switch_release_speed': self.control_unit.send(f'?FVEL{axis}'),
+                'setpoint': self.control_unit.send(f'?PSET{axis}'),
+                'position_counter': self.control_unit.send(f'?CNT{axis}'),
+                'encoder_position': self.control_unit.send(f'?ENCPOS{axis}'),
+            }
 
     def free(self):
         self.control_unit.send(f'AXIS{self.control_axis_number}=0')
@@ -299,7 +310,7 @@ class PS90_motor:
                         f'move not finished after {self.max_move_duration} s, stop sent', target_position))
                 time.sleep(0.05)
             actual_pos = self.read_current_position()
-        except:
+        except Exception:
             self.state = DeviceState.FAULT
             logger.exception('Error during movement of %s (axis %d)', self.name, self.control_axis_number)
             raise
@@ -341,17 +352,16 @@ def get_controller(name: str = None):
 
 
 @app.post("/ps90/connect")
-def ps90_connect(port: str = None, baud: int = 9600, name: str = 'ps90'):
-    """Connect to a PS90 controller and store it under `name`.
-    Example: /ps90/connect?name=main&port=/dev/ttyUSB0&baud=9600
+def ps90_connect(port: str, baud: int = 9600, name: str = 'main_ps90'):
+    """Connect to a PS90 controller and store it under `name` (debug / recovery: the
+    controllers of config/motors.yaml are connected at startup).
+    Example: /ps90/connect?name=main_ps90&port=COM25&baud=9600
     """
     global default_controller_name
     if serial is None:
         raise HTTPException(status_code=500, detail='pyserial is not installed in this environment')
     if name in controllers:
         return {"status": "already_connected", "name": name}
-    if port is None:
-        port = os.environ.get('PS90_PORT', '/dev/ttyUSB0')
     try:
         ctrl = PS90(port=port, baudrate=baud)
     except Exception as e:
@@ -428,7 +438,10 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
             if cname in controllers:
                 continue
             if ctype == 'ps90':
-                port = ctrl.get('port') or os.environ.get('PS90_PORT', 'COM25')
+                port = ctrl.get('port') or os.environ.get('PS90_PORT')
+                if not port:
+                    controller_errors[cname] = 'No serial port configured: set "port" in config/motors.yaml'
+                    continue
                 baud = int(ctrl.get('baud', 9600))
                 timeout = float(ctrl.get('timeout', PS90_DEFAULT_TIMEOUT))
                 command_delay = float(ctrl.get('command_delay', PS90_DEFAULT_COMMAND_DELAY))
@@ -452,10 +465,10 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
         name = entry.get('name')
         if not name or name in motors:
             continue
+        motor_errors.pop(name, None)
         try:
             if _register_motor_from_entry(entry, initialize):
                 created.append(name)
-                motor_errors.pop(name, None)
         except Exception as e:
             motor_errors[name] = str(e)
 
@@ -474,12 +487,16 @@ def _register_motor_from_entry(entry: dict, initialize: bool = False):
         controller_name = f'auto_{controller_type}'
         if controller_name not in controllers:
             if controller_type.lower() == 'ps90':
+                port = os.environ.get('PS90_PORT')
+                if not port:
+                    raise ValueError(f'No serial port for the automatic controller of motor {name}: '
+                                     f'declare it in the "controllers" section of config/motors.yaml')
                 try:
-                    controllers[controller_name] = PS90(port=os.environ.get('PS90_PORT', 'COM25'), baudrate=9600)
+                    controllers[controller_name] = PS90(port=port, baudrate=9600)
                     if default_controller_name is None:
                         default_controller_name = controller_name
-                except Exception:
-                    raise ValueError(f'Failed to create controller for motor {name}')
+                except Exception as e:
+                    raise ValueError(f'Failed to create controller for motor {name}: {e}')
             else:
                 raise ValueError(f'Unsupported controller type "{controller_type}" for motor {name}')
 
@@ -507,15 +524,16 @@ def _register_motor_from_entry(entry: dict, initialize: bool = False):
                        position_tolerance_steps=position_tolerance_steps,
                        unit=entry.get('unit'))
     motors[name] = motor
-    # apply motion parameters if provided
-    try:
-        if velocity is not None:
-            ctrl.send(f'PVEL{axis}={velocity}')
-        if acceleration is not None:
-            ctrl.send(f'ACC{axis}={acceleration}')
-    except Exception:
-        # non-fatal
-        pass
+    # apply motion parameters if provided (non-fatal: the motor stays registered)
+    for command, value in (('PVEL', velocity), ('ACC', acceleration)):
+        if value is None:
+            continue
+        try:
+            ctrl.send(f'{command}{axis}={value}')
+        except Exception as e:
+            message = f'Failed to set {command}{axis}={value}: {e}'
+            logger.error('Motor %s: %s', name, message)
+            motor_errors[name] = message
 
     if initialize:
         try:
@@ -639,6 +657,16 @@ def motors_read(motor: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"motor": motor, "position": pos, "state": m.state.value}
+
+
+@app.get("/motors/parameters/{motor}")
+def motors_parameters(motor: str):
+    """Axis parameters read from the PS90 (mode, velocity, acceleration, counters...)."""
+    m = get_motor(motor)
+    try:
+        return m.read_parameters()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/motors/init/{motor}")
