@@ -1,6 +1,6 @@
-"""Common HTTP helper utilities for simple GET requests with timeouts.
+"""Common HTTP helper utilities for simple GET/POST requests with timeouts.
 
-This centralizes the small `safe_get` helper used by multiple
+This centralizes the small `safe_get` / `safe_post` helpers used by multiple
 clients so that behavior (default timeout, error handling) is consistent
 project-wide.
 """
@@ -41,4 +41,9 @@ def safe_get(url, timeout=DEFAULT_TIMEOUT, **kwargs):
     return _request('GET', url, timeout, **kwargs)
 
 
-__all__ = ["safe_get", "DEFAULT_TIMEOUT"]
+def safe_post(url, timeout=DEFAULT_TIMEOUT, **kwargs):
+    """Same as `safe_get`, with a POST request."""
+    return _request('POST', url, timeout, **kwargs)
+
+
+__all__ = ["safe_get", "safe_post", "DEFAULT_TIMEOUT"]

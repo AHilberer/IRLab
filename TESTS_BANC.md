@@ -63,3 +63,25 @@ Préparation : choisir un axe sur lequel aller en **fin de course est sans dange
 
 Remarques / résultats :
 
+---
+
+## Tâche 4 : arrêt d'urgence
+
+⚠️ **À faire à faible vitesse, en surveillant le banc, la main près de l'arrêt matériel.**
+
+- [ ] **Avant tout : vérifier dans le manuel OWIS PS90** (points `À VÉRIFIER` dans `servers/motion_server.py`) :
+  - la commande d'arrêt d'un axe (`PS90_STOP_AXIS_CMD`, supposée `STOP<n>`). **Si elle est fausse, aucun arrêt ne fonctionnera** : c'est à confirmer avant tous les autres tests de cette section ;
+  - s'il existe une commande d'arrêt général du contrôleur : la mettre dans `PS90_STOP_ALL_CMD` (aujourd'hui `None` : `stop_all()` arrête un à un les axes des moteurs déclarés dans `config/motors.yaml`, **pas les axes non déclarés**).
+- [ ] **`stop(moteur)` depuis un autre shell.** Lancer un long mouvement depuis le PC A, puis `stop(moteur)` depuis le PC B.
+  *Attendu :* le moteur s'arrête immédiatement. Le `mv` du PC A lève une `MotionError` « stopped by user » avec la position atteinte.
+- [ ] **`stop_all()`.** Lancer des mouvements longs sur deux moteurs (deux shells), puis `stop_all()` depuis un troisième shell.
+  *Attendu :* tous les moteurs s'arrêtent.
+- [ ] **Reprise après arrêt.** Après un `stop`, refaire un `mv` du même moteur.
+  *Attendu :* le mouvement s'effectue normalement.
+- [ ] **Ctrl+C dans `tweak`.** En mode `tweak`, appuyer sur Ctrl+C.
+  *Attendu :* les moteurs reçoivent un `stop`, message « Interrupted: motors stopped », retour au shell.
+- [ ] **Ctrl+C pendant `mv` / `ascan`.** Lancer un long `mv`, puis Ctrl+C dans le même shell.
+  *Attendu :* message « Interrupted: stopping ... » et arrêt du moteur. **Limite connue :** tant que la tâche 14 n'est pas faite, la requête de mouvement est bloquante ; sous Windows, le Ctrl+C peut n'être pris en compte qu'à la fin du mouvement (ou du timeout client). Dans ce cas, utiliser `stop()` / `stop_all()` depuis un second shell. Ce test est à refaire après la tâche 14.
+
+Remarques / résultats :
+

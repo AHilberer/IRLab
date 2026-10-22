@@ -1,4 +1,4 @@
-"""Task 3, client side: mv/mvr raise MotionError, scans stop at the first error."""
+"""Tasks 3 and 4, client side: mv/mvr raise MotionError, scans stop, Ctrl+C sends stop."""
 from urllib.parse import urlsplit
 
 import pytest
@@ -71,6 +71,19 @@ def test_busy_motor_raises_motor_busy_error(bench):
         ms.motors['m1'].motion_lock.release()
 
 
+def test_ctrl_c_during_mv_sends_stop(bench):
+    fake, motor, seen, hooks = bench
+
+    def interrupt(method, path):
+        if path.startswith('/motors/move_abs'):
+            raise KeyboardInterrupt
+    hooks['before'] = interrupt
+    with pytest.raises(KeyboardInterrupt):
+        mc.mv(motor, 50, show_positions=False)
+    assert ('POST', '/motors/stop/m1') in seen
+    assert 'STOP1' in fake.commands
+
+
 def test_ascan_stops_at_first_error_without_returning(bench, capsys):
     fake, motor, seen, hooks = bench
     fake.positions[0] = 5
@@ -91,3 +104,7 @@ def test_ascan_returns_to_start_on_success(bench):
     moves = [p for m, p in seen if p.startswith('/motors/move_abs')]
     assert moves[-1] == '/motors/move_abs/m1/5'
 
+
+def test_stop_all_client(bench):
+    fake, motor, seen, hooks = bench
+    assert mc.stop_all() == {'status': 'stopped', 'motors': ['m1']}

@@ -1,4 +1,4 @@
-from common.http_client import safe_get, DEFAULT_TIMEOUT
+from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 from common.errors import ServerError, MotionError, MotorBusyError
 import os
@@ -83,6 +83,11 @@ def _motion_error(motor, exc):
     return MotionError(f"Motor {motor.name}: {exc}")
 
 
+def _stop_on_interrupt(motors):
+    print(f"\nInterrupted: stopping {', '.join(m.name for m in motors)}")
+    stop(*motors)
+
+
 def _collect_positions(motors):
     positions = {}
     for motor in motors:
@@ -101,6 +106,7 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise
     `timeout=None` waits indefinitely for the server response.
     A failed move raises MotionError (remaining motors are not moved); with
     `raise_on_error=False` errors are returned in the results list instead.
+    Ctrl+C stops the motors and re-raises KeyboardInterrupt.
     """
     if len(args) % 2 != 0:
         raise ValueError("mv requires pairs of (Motor, position)")
@@ -135,6 +141,9 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise
         try:
             r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
+        except KeyboardInterrupt:
+            _stop_on_interrupt(motors)
+            raise
         except Exception as e:
             if raise_on_error:
                 raise _motion_error(motor, e) from e
@@ -154,6 +163,7 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, rais
     `timeout=None` waits indefinitely for the server response.
     A failed move raises MotionError (remaining motors are not moved); with
     `raise_on_error=False` errors are returned in the results list instead.
+    Ctrl+C stops the motors and re-raises KeyboardInterrupt.
     """
     if len(args) % 2 != 0:
         raise ValueError("mvr requires pairs of (Motor, delta)")
@@ -188,6 +198,9 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, rais
         try:
             r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
+        except KeyboardInterrupt:
+            _stop_on_interrupt(motors)
+            raise
         except Exception as e:
             if raise_on_error:
                 raise _motion_error(motor, e) from e
@@ -241,6 +254,35 @@ def control(*motors):
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
     return results
+
+
+def stop(*motors):
+    """Stop one or more motors immediately. Usage: stop(motor1, motor2, ...)
+
+    Never raises on a server error (it is used while handling Ctrl+C):
+    failures are printed and returned in the results list.
+    """
+    results = []
+    for motor in motors:
+        if not isinstance(motor, Motor):
+            raise ValueError("Arguments must be Motor instances")
+        try:
+            r = safe_post(f"{BASE_URL}/motors/stop/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor.name, r.json()))
+        except Exception as e:
+            print(f"[WARN] Failed to stop motor {motor.name}: {e}")
+            results.append((motor.name, {'error': str(e)}))
+    return results
+
+
+def stop_all():
+    """Stop all axes of all controllers of the motion server."""
+    try:
+        r = safe_post(f"{BASE_URL}/motors/stop_all", timeout=DEFAULT_TIMEOUT)
+        return r.json()
+    except Exception as e:
+        print(f"[WARN] stop_all failed: {e}")
+        return {'error': str(e)}
 
 
 def free_all_motors():

@@ -20,3 +20,7 @@ class MotionError(RuntimeError):
 
 class MotorBusyError(MotionError):
     """A motion was requested on a motor that is already moving (HTTP 409)."""
+
+
+class MotionStoppedError(MotionError):
+    """A motion was interrupted by a stop request."""

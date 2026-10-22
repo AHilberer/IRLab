@@ -4,7 +4,7 @@ import os
 import threading
 
 from common.states import DeviceState
-from common.errors import MotionError, MotorBusyError
+from common.errors import MotionError, MotorBusyError, MotionStoppedError
 
 try:
     import serial
@@ -41,6 +41,10 @@ PS90_DEFAULT_COMMAND_DELAY = 0.05
 # Command stopping one axis ({axis} is replaced by the axis number).
 # À VÉRIFIER dans le manuel OWIS PS90 (axis stop command).
 PS90_STOP_AXIS_CMD = 'STOP{axis}'
+# Command stopping all axes of a controller, sent by /motors/stop_all before the
+# per-axis stops. None: not used, only the per-axis stop of each registered motor
+# is sent. À VÉRIFIER dans le manuel OWIS PS90 (general stop command).
+PS90_STOP_ALL_CMD = None
 
 # Per-motor defaults, overridable in config/motors.yaml
 DEFAULT_MAX_MOVE_DURATION = 120.0     # s; beyond this the axis is stopped and the move fails
@@ -116,6 +120,8 @@ class PS90_motor:
         self.step_to_mm = step_to_mm
         self.max_move_duration = max_move_duration
         self.position_tolerance_steps = position_tolerance_steps
+        # set by stop(); checked by the end-of-move loop
+        self._stop_requested = threading.Event()
         self.current_position_step = None
         self.state = DeviceState.OFF
         # Only one motion at a time per motor; a second request fails fast (HTTP 409).
@@ -179,6 +185,12 @@ class PS90_motor:
         finally:
             self.motion_lock.release()
     
+    def stop(self):
+        """Stop this axis now. Does not wait for the motion lock: only the serial
+        lock is taken, for a single command."""
+        self._stop_requested.set()
+        self._send_stop()
+
     def _send_stop(self):
         self.control_unit.send(PS90_STOP_AXIS_CMD.format(axis=self.control_axis_number))
 
@@ -225,13 +237,14 @@ class PS90_motor:
         # caller must hold self.motion_lock
         # Returns the final position (steps); raises MotionError if the target is not reached.
         print(f"Moving {self.name} to {target_position}")
+        self._stop_requested.clear()
         self.state = DeviceState.MOVING
         try:
             with self.control_unit.lock:
                 self.control_unit.send(f'PSET{self.control_axis_number}={target_position}')
                 self.control_unit.send(f'PGO{self.control_axis_number}')
             # the serial lock is taken and released at each ?ASTAT poll, so that
-            # reads (wm) and other axes stay available during the motion
+            # reads (wm), stop and other axes stay available during the motion
             deadline = time.monotonic() + self.max_move_duration
             while self._axis_status()=='T':
                 if time.monotonic() > deadline:
@@ -245,6 +258,10 @@ class PS90_motor:
             print(f'Error during movement of axis {self.control_axis_number}.')
             raise
 
+        if self._stop_requested.is_set():
+            self.state = DeviceState.ON
+            raise MotionStoppedError(f'Motor {self.name}: stopped by user '
+                                     f'(target {target_position}, reached {actual_pos})')
         if abs(actual_pos - target_position) > self.position_tolerance_steps:
             self.state = DeviceState.FAULT
             message = self._motion_failure('wrong final position', target_position)
@@ -516,6 +533,38 @@ def motors_move_rel(motor: str, delta: int):
         raise HTTPException(status_code=500, detail=str(e))
     return {"result": "ok", "motor": motor, "position": res}
 
+
+@app.post("/motors/stop/{motor}")
+def motors_stop(motor: str):
+    """Stop a motor immediately (does not wait for a running move request)."""
+    m = get_motor(motor)
+    try:
+        m.stop()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'Failed to stop motor {motor}: {e}')
+    return {"status": "stopped", "motor": motor}
+
+
+@app.post("/motors/stop_all")
+def motors_stop_all():
+    """Stop all axes of all controllers."""
+    errors = {}
+    if PS90_STOP_ALL_CMD:
+        for cname, ctrl in controllers.items():
+            try:
+                ctrl.send(PS90_STOP_ALL_CMD)
+            except Exception as e:
+                errors[cname] = str(e)
+    stopped = []
+    for name, m in motors.items():
+        try:
+            m.stop()
+            stopped.append(name)
+        except Exception as e:
+            errors[name] = str(e)
+    if errors:
+        raise HTTPException(status_code=500, detail=f'Stop failed for {errors} (stopped: {stopped})')
+    return {"status": "stopped", "motors": stopped}
 
 
 @app.get("/motors/read/{motor}")
