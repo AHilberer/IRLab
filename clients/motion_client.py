@@ -304,6 +304,34 @@ def stop_all():
         return {'error': str(e)}
 
 
+def init(*motors):
+    """Initialize one or more motors (enable the axis, INIT if not ready, absolute mode).
+    Needed once after the motion server starts, before moving them. INIT can move the axis.
+    Usage: init(motor1, motor2, ...)"""
+    results = []
+    for motor in motors:
+        if not isinstance(motor, Motor):
+            raise ValueError("Arguments must be Motor instances")
+        try:
+            r = safe_get(f"{BASE_URL}/motors/init/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            results.append((motor.name, r.json()))
+        except Exception as e:
+            print(f"[WARN] Failed to initialize motor {motor.name}: {e}")
+            results.append((motor.name, {'error': str(e)}))
+    return results
+
+
+def init_all():
+    """Initialize all motors registered on the motion server (see `init`)."""
+    try:
+        r = safe_get(f"{BASE_URL}/motors/list", timeout=DEFAULT_TIMEOUT)
+        motor_names = [entry.get('name') for entry in r.json().get('motors', []) if entry.get('name')]
+    except Exception as e:
+        print(f"[WARN] Failed to list motors: {e}")
+        return [('_list_motors', {'error': str(e)})]
+    return init(*[Motor(name) for name in motor_names])
+
+
 def free_all_motors():
     """Release all motors currently registered on the motion server."""
     try:

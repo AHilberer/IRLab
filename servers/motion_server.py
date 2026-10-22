@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 import time
 import os
@@ -5,6 +6,7 @@ import threading
 
 from common.states import DeviceState
 from common.errors import MotionError, MotorBusyError, MotionStoppedError
+from common.version import get_version
 
 try:
     import serial
@@ -15,7 +17,17 @@ try:
 except Exception:
     yaml = None
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app):
+    # startup: load the motor config (controllers + motors); never fails, errors
+    # are reported by /status (degraded mode)
+    load_config()
+    yield
+    # shutdown: stop moving axes, then close the controllers
+    shutdown_close_controllers()
+
+
+app = FastAPI(lifespan=lifespan)
 
 # Global controller instance (lazy-created)
 # controllers registry and default name
@@ -25,8 +37,14 @@ default_controller_name = None
 # registry of named motor objects (create once via /ps90/register)
 motors = {}
 
-# default config path (relative to repo root)
+# default config path (relative to repo root), overridable with $IRLAB_MOTORS_CONFIG
 DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
+
+# Result of the last config load, reported by /status
+config_path = None
+config_error = None        # config file missing / unreadable / invalid
+controller_errors = {}     # controller name -> error message
+motor_errors = {}          # motor name -> error message (registration or initialization)
 
 
 # Character ending each PS90 response.
@@ -60,6 +78,7 @@ class PS90:
         # port must hold this lock so concurrent requests cannot interleave.
         # Reentrant so multi-command sequences can hold it around several send().
         self.lock = threading.RLock()
+        self.port = port
         self.command_delay = command_delay
         self.ser = serial.Serial(port, baudrate,
                     timeout=timeout,
@@ -227,7 +246,14 @@ class PS90_motor:
         self.current_position_step = position
         return self.current_position_step
         
+    def _check_initialized(self):
+        # OFF: initialize_axis() never ran since the server started, so the axis mode
+        # (absolute/relative) and enable state are unknown
+        if self.state == DeviceState.OFF:
+            raise MotionError(f'Motor {self.name} not initialized: run init({self.name}) or init_all()')
+
     def move_absolute(self, target_position:int):
+        self._check_initialized()
         self._acquire_motion_lock()
         try:
             return self._move_absolute(target_position)
@@ -272,6 +298,7 @@ class PS90_motor:
         return actual_pos
     
     def move_relative(self, displacement_step:int):
+        self._check_initialized()
         self._acquire_motion_lock()
         try:
             # Always re-read the position: the cached current_position_step may be stale
@@ -409,10 +436,12 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
                 try:
                     controllers[cname] = PS90(port=port, baudrate=baud,
                                               timeout=timeout, command_delay=command_delay)
+                    controller_errors.pop(cname, None)
                     if default_controller_name is None:
                         default_controller_name = cname
                 except Exception as e:
-                    raise HTTPException(status_code=500, detail=f'Failed to create controller "{cname}": {e}')
+                    # degraded mode: keep going, motors of this controller are skipped
+                    controller_errors[cname] = f'Failed to open {port}: {e}'
             else:
                 # unknown controller type: skip (could add hooks for other types)
                 continue
@@ -422,91 +451,133 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
 
     for entry in cfg['motors']:
         name = entry.get('name')
-        if not name:
+        if not name or name in motors:
             continue
-        # controller selection: prefer explicit controller name, else controller_type triggers auto controller
-        controller_name = entry.get('controller') or entry.get('controller_name')
-        controller_type = entry.get('controller_type') or entry.get('controler_type')
-        if controller_name is None and controller_type:
-            # create or reuse an auto controller for this type
-            controller_name = f'auto_{controller_type}'
-            if controller_name not in controllers:
-                if controller_type.lower() == 'ps90':
-                    try:
-                        controllers[controller_name] = PS90(port=os.environ.get('PS90_PORT', 'COM25'), baudrate=9600)
-                        if default_controller_name is None:
-                            default_controller_name = controller_name
-                    except Exception:
-                        raise ValueError(f'Failed to create controller for motor {name}')
-                else:
-                    raise ValueError(f'Unsupported controller type "{controller_type}" for motor {name}')
-
-        if controller_name is None:
-            # fallback to default controller
-            if default_controller_name is None:
-                raise ValueError('No controller specified for motor and no default controller connected')
-            controller_name = default_controller_name
-
-        if controller_name not in controllers:
-            raise ValueError(f'Controller "{controller_name}" not found for motor {name}')
-
-        axis = int(entry.get('controller_channel') or entry.get('controler_channel') or entry.get('axis'))
-        step = float(entry.get('step_to_mm', 1.0))
-        velocity = entry.get('velocity')
-        acceleration = entry.get('acceleration')
-        max_move_duration = float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION))
-        position_tolerance_steps = int(entry.get('position_tolerance_steps', DEFAULT_POSITION_TOLERANCE_STEPS))
-
-        if name in motors:
-            continue
-        ctrl = controllers[controller_name]
-        motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step,
-                           max_move_duration=max_move_duration,
-                           position_tolerance_steps=position_tolerance_steps)
-        motors[name] = motor
-        created.append(name)
-        # apply motion parameters if provided
         try:
-            if velocity is not None:
-                ctrl.send(f'PVEL{axis}={velocity}')
-            if acceleration is not None:
-                ctrl.send(f'ACC{axis}={acceleration}')
-        except Exception:
-            # non-fatal
-            pass
+            if _register_motor_from_entry(entry, initialize):
+                created.append(name)
+                motor_errors.pop(name, None)
+        except Exception as e:
+            motor_errors[name] = str(e)
 
-        if initialize:
-            try:
-                motor.initialize_axis()
-            except Exception:
-                # continue registering others even if one fails
-                pass
+    return created
 
+
+def _register_motor_from_entry(entry: dict, initialize: bool = False):
+    """Create one motor from its config entry. Returns True if created."""
+    global default_controller_name
+    name = entry.get('name')
+    # controller selection: prefer explicit controller name, else controller_type triggers auto controller
+    controller_name = entry.get('controller') or entry.get('controller_name')
+    controller_type = entry.get('controller_type') or entry.get('controler_type')
+    if controller_name is None and controller_type:
+        # create or reuse an auto controller for this type
+        controller_name = f'auto_{controller_type}'
+        if controller_name not in controllers:
+            if controller_type.lower() == 'ps90':
+                try:
+                    controllers[controller_name] = PS90(port=os.environ.get('PS90_PORT', 'COM25'), baudrate=9600)
+                    if default_controller_name is None:
+                        default_controller_name = controller_name
+                except Exception:
+                    raise ValueError(f'Failed to create controller for motor {name}')
+            else:
+                raise ValueError(f'Unsupported controller type "{controller_type}" for motor {name}')
+
+    if controller_name is None:
+        # fallback to default controller
+        if default_controller_name is None:
+            raise ValueError('No controller specified for motor and no default controller connected')
+        controller_name = default_controller_name
+
+    if controller_name in controller_errors:
+        raise ValueError(f'Controller "{controller_name}" unavailable (see its error)')
+    if controller_name not in controllers:
+        raise ValueError(f'Controller "{controller_name}" not found for motor {name}')
+
+    axis = int(entry.get('controller_channel') or entry.get('controler_channel') or entry.get('axis'))
+    step = float(entry.get('step_to_mm', 1.0))
+    velocity = entry.get('velocity')
+    acceleration = entry.get('acceleration')
+    max_move_duration = float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION))
+    position_tolerance_steps = int(entry.get('position_tolerance_steps', DEFAULT_POSITION_TOLERANCE_STEPS))
+
+    ctrl = controllers[controller_name]
+    motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step,
+                       max_move_duration=max_move_duration,
+                       position_tolerance_steps=position_tolerance_steps)
+    motors[name] = motor
+    # apply motion parameters if provided
+    try:
+        if velocity is not None:
+            ctrl.send(f'PVEL{axis}={velocity}')
+        if acceleration is not None:
+            ctrl.send(f'ACC{axis}={acceleration}')
+    except Exception:
+        # non-fatal
+        pass
+
+    if initialize:
+        try:
+            motor.initialize_axis()
+        except Exception as e:
+            # the motor stays registered (state FAULT); continue with the others
+            motor_errors[name] = f'Initialization failed: {e}'
+    return True
+
+
+def load_config(path: str = None, initialize: bool = None):
+    """Load the motor config: open the controllers and register the motors.
+
+    Never raises: errors are kept in config_error / controller_errors / motor_errors
+    and reported by /status (degraded mode). Controllers already connected and motors
+    already registered are left as they are, so calling it again retries only what
+    failed. `initialize=None` uses `initialize_on_startup` from the YAML (default false:
+    INIT can move the axes).
+    """
+    global config_path, config_error
+    if path is None:
+        path = os.environ.get('IRLAB_MOTORS_CONFIG') or os.path.normpath(DEFAULT_MOTOR_CONFIG)
+    config_path = path
+    try:
+        if yaml is None:
+            raise RuntimeError('pyyaml is not installed in this environment')
+        with open(path, 'r') as fh:
+            cfg = yaml.safe_load(fh) or {}
+        if initialize is None:
+            initialize = bool(cfg.get('initialize_on_startup', False))
+        created = _load_motor_config_from_dict(cfg, initialize=initialize)
+    except Exception as e:
+        config_error = f'Failed to load config {path}: {e}'
+        print(config_error)
+        return []
+    config_error = None
+    for name, err in controller_errors.items():
+        print(f'Controller {name}: {err}')
+    for name, err in motor_errors.items():
+        print(f'Motor {name}: {err}')
     return created
 
 
 @app.get("/ps90/load_config")
 def ps90_load_config(path: str = None, initialize: bool = False):
-    """Load motor definitions from a YAML file and register them. If `initialize=true`, call initialize on each.
-    By default the server will look for `config/motors.yaml` in the repository.
+    """Load motor definitions from a YAML file and register them. If `initialize=true`, call initialize on each new motor.
+    The server already loads its config at startup; prefer /admin/reload_config to retry after an error.
     """
-    if yaml is None:
-        raise HTTPException(status_code=500, detail='pyyaml is not installed in this environment')
-    if path is None:
-        # normalize default path
-        path = os.path.normpath(DEFAULT_MOTOR_CONFIG)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail=f'Config file not found: {path}')
-    try:
-        with open(path, 'r') as fh:
-            cfg = yaml.safe_load(fh)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f'Failed to read config: {e}')
-    try:
-        created = _load_motor_config_from_dict(cfg, initialize=initialize)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"status": "loaded", "created": created}
+    created = load_config(path, initialize=initialize)
+    if config_error:
+        raise HTTPException(status_code=400, detail=config_error)
+    return {"status": "loaded", "created": created,
+            "controller_errors": controller_errors, "motor_errors": motor_errors}
+
+
+@app.post("/admin/reload_config")
+def admin_reload_config():
+    """Retry loading the config: reconnect controllers and register motors that
+    failed (e.g. PS90 unplugged at startup). Existing controllers and motors are kept;
+    restart the server to apply other changes of the config file."""
+    created = load_config()
+    return {"created": created, **status()}
 
 
 @app.get("/motors/move_abs/{motor}/{position}")
@@ -684,6 +755,7 @@ def motors_list():
             "step_to_mm": m.step_to_mm,
             "controller": ctrl_name,
             "max_move_duration": m.max_move_duration,
+            "state": m.state.value,
         })
     return {"motors": out}
 
@@ -704,7 +776,24 @@ def controllers_list():
 
 @app.get("/status")
 def status():
-    return "This confirms connection to the motion server. Use /motors/* endpoints to control hardware."
+    """Server status: version, config, controllers (connected or in error) and motors."""
+    ctrl = [{"name": n, "port": c.port, "state": "connected"} for n, c in controllers.items()]
+    ctrl += [{"name": n, "state": "error", "error": e}
+             for n, e in controller_errors.items() if n not in controllers]
+    degraded = bool(config_error or controller_errors or motor_errors)
+    return {
+        "server": "motion_server",
+        "version": get_version(),
+        "status": "degraded" if degraded else "ok",
+        "config": config_path,
+        "config_error": config_error,
+        "controllers": ctrl,
+        "motors": {
+            "registered": list(motors),
+            "not_initialized": [n for n, m in motors.items() if m.state == DeviceState.OFF],
+            "errors": dict(motor_errors),
+        },
+    }
 
 
 @app.get("/state")
@@ -723,13 +812,20 @@ def get_state():
 ## launch with 'uvicorn servers.motion_server:app --host 0.0.0.0 --port 8001'
 
 
-@app.on_event("shutdown")
 def shutdown_close_controllers():
     """Gracefully close all connected controller instances when the FastAPI app is shutting down.
 
-    This will attempt to call `.close()` on each controller and clear the registry so serial
-    ports are released when the server process exits (for example on Ctrl+C from uvicorn).
+    Moving axes are stopped first. Then this will attempt to call `.close()` on each controller
+    and clear the registry so serial ports are released when the server process exits (for
+    example on Ctrl+C from uvicorn).
     """
+    for name, m in motors.items():
+        if m.state == DeviceState.MOVING:
+            try:
+                m.stop()
+                print(f"Shutdown: stopped moving motor {name}")
+            except Exception as e:
+                print(f"Shutdown: failed to stop motor {name}: {e}")
     if not controllers:
         print("Shutdown: no controllers to close")
         return

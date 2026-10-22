@@ -2,7 +2,7 @@
 # startup with 'python IRLab_shell.py'
 
 import IPython
-from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, Motor, DEFAULT_MAX_MOVE_DURATION
+from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, init, init_all, Motor, DEFAULT_MAX_MOVE_DURATION
 from common.errors import MotionError
 from clients.spectro_client import Spectrometer
 from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
@@ -36,11 +36,27 @@ print("-----------------------------------------------------")
 # prefer a short timeout at startup so the shell doesn't block
 STARTUP_TIMEOUT = 2
 
+
+def _describe_status(data):
+    """One-line summary of a server's /status JSON, followed by its errors if any."""
+    if not isinstance(data, dict):
+        return str(data)
+    lines = [f"{data.get('status', '?')} (version {data.get('version', '?')})"]
+    if data.get('config_error'):
+        lines.append(f"  [ERROR] {data['config_error']}")
+    for c in data.get('controllers', []):
+        if c.get('state') == 'error':
+            lines.append(f"  [ERROR] controller {c.get('name')}: {c.get('error')}")
+    for group in ('motors', 'actuators'):
+        for name, err in (data.get(group) or {}).get('errors', {}).items():
+            lines.append(f"  [ERROR] {name}: {err}")
+    return "\n".join(lines)
+
 # Check motion server status
 try:
     motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
     r = safe_get(f"{motion_url}/status", timeout=STARTUP_TIMEOUT)
-    print(f"Motor server running: {r.text}")
+    print(f"Motor server running: {_describe_status(r.json())}")
     motor_server_ok = True
 except Exception:
     print("Motor server NOT reachable")
@@ -68,7 +84,7 @@ except Exception:
 try:
     festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
     r = safe_get(f"{festo_url}/status", timeout=STARTUP_TIMEOUT)
-    print(f"FESTO server running: {r.text}")
+    print(f"FESTO server running: {_describe_status(r.json())}")
     festo_server_ok = True
 except Exception:
     print("FESTO server NOT reachable")
@@ -87,14 +103,7 @@ motors = {}
 if motor_server_ok:
     try:
         motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
-        # ask the server to load its config and initialize axes (non-fatal)
-        try:
-            safe_get(f"{motion_url}/ps90/load_config?initialize=true", timeout=5)
-        except Exception:
-            # server may not be up or may not allow load; continue and try to read list
-            pass
-
-        # try to get the registered motors from the server
+        # the server loads its config at startup; get the registered motors from it
         try:
             r = safe_get(f"{motion_url}/motors/list", timeout=5)
             data = r.json()
@@ -110,6 +119,10 @@ if motor_server_ok:
                 print(f"  [OK] Motor '{name}'  (axis {axis}, controller: {controller_name}, step_to_mm: {step})")
             if not motors:
                 print("  (no motors registered on server)")
+            not_initialized = [e.get('name') for e in data.get('motors', []) if e.get('state') == 'off']
+            if not_initialized:
+                print(f"  [INFO] Not initialized yet: {', '.join(not_initialized)}")
+                print("         Run init_all() (or init(motor)) before moving them. INIT can move the axes.")
         except Exception:
             # fallback: try local config and register on server (best-effort)
             try:
@@ -145,13 +158,7 @@ actuators = {}
 if festo_server_ok:
     try:
         festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
-        # Ask the server to load config (connects NI-DAQ controller and registers actuators).
-        try:
-            safe_get(f"{festo_url}/festo/load_config", timeout=5)
-        except Exception:
-            pass
-
-        # Retrieve the registered actuators and expose them as named objects in the shell.
+        # The server loads its config at startup. Retrieve the registered actuators and expose them as named objects in the shell.
         try:
             r = safe_get(f"{festo_url}/festo/actuators/list", timeout=5)
             data = r.json()

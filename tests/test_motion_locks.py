@@ -19,6 +19,8 @@ def setup(monkeypatch):
         'm1': ms.PS90_motor('m1', ctrl, 1),
         'm2': ms.PS90_motor('m2', ctrl, 2),
     }
+    for m in motors.values():
+        m.state = ms.DeviceState.ON   # as after init()
     monkeypatch.setattr(ms, 'motors', motors)
     fake.positions[0] = 111
     fake.positions[1] = 222

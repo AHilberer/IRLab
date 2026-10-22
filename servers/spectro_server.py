@@ -3,6 +3,7 @@ import os
 import threading
 
 from common.states import DeviceState
+from common.version import get_version
 
 try:
     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
@@ -313,7 +314,15 @@ def acquire(exposure: float = 0.1, name: str = None):
 
 @app.get("/status")
 def status():
-    return "This confirms connection to the spectro server."
+    """Server status: version and registered spectrometers with their state."""
+    with _registry_lock:
+        specs = [{"name": n, "state": sp.state.value} for n, sp in spectrometers.items()]
+    return {
+        "server": "spectro_server",
+        "version": get_version(),
+        "status": "ok" if specs else "no spectrometer connected",
+        "spectrometers": specs,
+    }
 
 
 @app.get("/state")

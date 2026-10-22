@@ -33,11 +33,20 @@ port from `config/servers.yaml`; `-Port <n>` overrides it. Equivalent manual com
 uvicorn servers.motion_server:app --host 0.0.0.0 --port 8001
 ```
 
+Each server loads its config file at startup (motors / FESTO) and opens the hardware.
+If the hardware is missing (COM port absent, NI driver missing...), the server still
+starts in degraded mode: `GET /status` reports the errors, and `POST /admin/reload_config`
+retries once the problem is fixed.
+
 Start interactive shell:
 
 ```bash
 python IRLab_shell.py
 ```
+
+Motor axes are **not** initialized at server startup (`initialize_on_startup: false` in
+`config/motors.yaml`), because INIT can move them. After starting the motion server, run
+`init_all()` once in the shell, watching the bench. Moves of non-initialized motors are refused.
 
 ## Network
 
@@ -65,9 +74,13 @@ in `config/servers.yaml` with the real names of the bench PCs.
 	- `SPECTRO_SERVER`
 	- `FESTO_SERVER`
 	- `FESTO_CHASSIS` (default: `cDAQ1`)
+	- `IRLAB_MOTORS_CONFIG`: motor config file loaded by the motion server (default: `config/motors.yaml`)
+	- `IRLAB_FESTO_CONFIG`: config file loaded by the FESTO server (default: `config/festo.yaml`)
 
 ## Main Motion Endpoints
 
+- `GET /status` (JSON: version, config, controllers and their errors, motors)
+- `POST /admin/reload_config`
 - `GET /ps90/connect`
 - `GET /ps90/close`
 - `GET /ps90/load_config`
@@ -76,6 +89,8 @@ in `config/servers.yaml` with the real names of the bench PCs.
 - `GET /motors/read/{motor}`
 - `GET /motors/move_abs/{motor}/{position}`
 - `GET /motors/move_rel/{motor}/{delta}`
+- `POST /motors/stop/{motor}`
+- `POST /motors/stop_all`
 - `GET /motors/free/{motor}`
 - `GET /motors/control/{motor}`
 
@@ -86,11 +101,13 @@ in `config/servers.yaml` with the real names of the bench PCs.
 - `GET /spectro/load_config`
 - `GET /spectro/list`
 - `GET /acquire?exposure=0.1`
-- `GET /status`
+- `GET /status` (JSON: version, spectrometers and their state)
 - `GET /state`
 
 ## Main FESTO Endpoints
 
+- `GET /status` (JSON: version, config, controllers and their errors, actuators)
+- `POST /admin/reload_config`
 - `GET /festo/connect`
 - `GET /festo/close`
 - `GET /festo/load_config`
@@ -112,6 +129,8 @@ In `IRLab_shell.py`, these are available directly:
 - `free(...)` release one or more motors
 - `control(...)` re-acquire control of one or more motors
 - `free_all_motors()` release all registered motors
+- `init(...)` / `init_all()` initialize motors (needed once after the motion server starts; INIT can move axes)
+- `stop(...)` / `stop_all()` stop motors immediately
 - `ascan(motor, start, stop, npts)` linear scan
 - `dscan(motor, start_delta, stop_delta, npts)` relative linear scan
 - `tweak(m1[, m2[, m3]])` interactive keyboard jog mode

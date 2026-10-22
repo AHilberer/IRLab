@@ -128,3 +128,27 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 8 : chargement de la config au démarrage
+
+**Nouveau fonctionnement :** les serveurs moteurs et FESTO chargent leur config tout seuls au démarrage. Les axes ne sont **plus initialisés automatiquement** : après chaque démarrage du serveur moteurs, taper `init_all()` dans le shell, **en surveillant le banc** (INIT peut déplacer les axes). Tant que ce n'est pas fait, les mouvements sont refusés (« not initialized »).
+
+- [ ] **Moteurs listés sans le shell.** Démarrer le serveur moteurs, puis ouvrir dans un navigateur `http://pc-moteurs:8001/motors/list`.
+  *Attendu :* les 6 moteurs sont listés (état `off`), **sans** avoir lancé le shell, et sans qu'aucun axe n'ait bougé.
+- [ ] **`/status`.** Ouvrir `http://pc-moteurs:8001/status`, `http://pc-moteurs:8003/status`, `http://pc-spectro:8002/status`.
+  *Attendu :* JSON avec le nom du serveur, la version (`branche@commit`), `"status": "ok"` et les contrôleurs `connected`.
+- [ ] **Shell et `init_all()`.** Lancer le shell.
+  *Attendu :* message « Not initialized yet: ... Run init_all() ». Un `mv` est refusé (« not initialized »). Après `init_all()` (en surveillant le banc), les `mv` fonctionnent.
+- [ ] **Pas d'INIT à l'ouverture d'un shell.** Une fois les moteurs initialisés, ouvrir un second shell sur un autre PC.
+  *Attendu :* aucun axe ne bouge, et pas de message « Not initialized ».
+- [ ] **PS90 débranché au démarrage.** Arrêter le serveur moteurs, débrancher le câble série du PS90, redémarrer le serveur.
+  *Attendu :* le serveur démarre quand même ; `/status` indique `"status": "degraded"` et l'erreur du port COM ; le shell affiche cette erreur.
+- [ ] **Reprise avec `/admin/reload_config`.** Rebrancher le câble, puis aller sur `http://pc-moteurs:8001/docs`, endpoint `POST /admin/reload_config`, « Try it out » → « Execute ».
+  *Attendu :* les moteurs apparaissent (`created`), `/status` repasse à `ok`. Puis `init_all()` dans le shell.
+- [ ] **Arrêt du serveur pendant un mouvement.** Lancer un long `mv` (faible vitesse), puis Ctrl+C dans la fenêtre du serveur moteurs.
+  *Attendu :* l'axe est arrêté avant la fermeture du port série (message « Shutdown: stopped moving motor ... »).
+- [ ] **FESTO.** Même chose côté FESTO : `http://pc-moteurs:8003/festo/actuators/list` liste les actionneurs sans passer par le shell ; `on(...)` / `off(...)` fonctionnent depuis le shell.
+
+Remarques / résultats :
+

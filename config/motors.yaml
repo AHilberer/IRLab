@@ -5,6 +5,11 @@
 # max_move_duration: max duration of a move in s, then the axis is stopped (optional, default 120)
 # position_tolerance_steps: accepted final position error in steps (optional, default 0)
 
+# Initialize the axes (AXIS=1, INIT if not ready, absolute mode) when the server
+# starts. false (default): INIT can move the axes, so it is done on purpose from
+# the shell with init_all() / init(motor). Moves are refused until then.
+initialize_on_startup: false
+
 controllers:
   - name: main_ps90
     type: ps90

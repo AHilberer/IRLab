@@ -20,6 +20,7 @@ def bench(monkeypatch):
     ctrl = ms.PS90(port='FAKE', command_delay=0)
     monkeypatch.setattr(ms, 'controllers', {'main': ctrl})
     monkeypatch.setattr(ms, 'motors', {'m1': ms.PS90_motor('m1', ctrl, 1)})
+    ms.motors['m1'].state = ms.DeviceState.ON   # as after init()
     tc = TestClient(ms.app)
     requests_seen = []
 
