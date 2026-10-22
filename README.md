@@ -79,6 +79,18 @@ in `config/servers.yaml` with the real names of the bench PCs.
 	- `FESTO_CHASSIS` (default: `cDAQ1`)
 	- `IRLAB_MOTORS_CONFIG`: motor config file loaded by the motion server (default: `config/motors.yaml`)
 	- `IRLAB_FESTO_CONFIG`: config file loaded by the FESTO server (default: `config/festo.yaml`)
+	- `IRLAB_LOG_DIR`: directory of the server log files (default: `logs/`)
+
+## Logs
+
+Each server writes its log to the console and to `logs/<server>.log` (`motion_server.log`,
+`spectro_server.log`, `festo_server.log`) at the repository root, or in `$IRLAB_LOG_DIR`.
+Files are rotated every night (`<server>.log.YYYY-MM-DD`) and kept one year.
+
+- Every action (POST request) is logged when it starts and when it ends: client IP,
+  endpoint, parameters, result or error, duration. Reads (GET) are not logged.
+- `log_serial: true` in `config/motors.yaml` also logs every command sent to the PS90
+  and its response (verbose, for diagnosis only).
 
 ## Main Endpoints
 

@@ -5,6 +5,9 @@ import threading
 
 from common.states import DeviceState
 from common.version import get_version
+from common.logging_setup import setup_logging, add_action_logging
+
+logger = setup_logging('spectro_server')
 
 try:
     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
@@ -26,6 +29,7 @@ except Exception:
     yaml = None
 
 app = FastAPI()
+add_action_logging(app, logger)
 
 # Serializes all raw Andor SDK2 hardware calls (connect/close/acquire):
 # FastAPI's sync endpoints run on a thread pool, and SDK2 calls are not

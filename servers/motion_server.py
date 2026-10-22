@@ -4,10 +4,17 @@ from pydantic import BaseModel
 import time
 import os
 import threading
+import logging
 
 from common.states import DeviceState
 from common.errors import MotionError, MotorBusyError, MotionStoppedError
 from common.version import get_version
+from common.logging_setup import setup_logging, add_action_logging
+
+logger = setup_logging('motion_server')
+# every PS90 command and response, at DEBUG level; enabled by `log_serial: true` in motors.yaml
+serial_logger = logging.getLogger('motion_server.serial')
+serial_logger.setLevel(logging.WARNING)
 
 try:
     import serial
@@ -29,6 +36,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+add_action_logging(app, logger)
 
 # Global controller instance (lazy-created)
 # controllers registry and default name
@@ -103,12 +111,14 @@ class PS90:
         full_cmd = cmd + '\r'   # OWIS uses CR as end character
         with self.lock:
             self.ser.reset_input_buffer()
+            serial_logger.debug('%s >> %s', self.port, cmd)
             self.ser.write(full_cmd.encode())
             if not cmd.startswith('?'):
                 if self.command_delay:
                     time.sleep(self.command_delay)
                 return None
             raw = self.ser.read_until(PS90_TERMINATOR)
+            serial_logger.debug('%s << %r', self.port, raw)
         if not raw.endswith(PS90_TERMINATOR):
             raise TimeoutError(f'No complete response from PS90 to "{cmd}" '
                                f'within {self.ser.timeout} s (received: {raw!r})')
@@ -173,11 +183,11 @@ class PS90_motor:
                 if control_unit_status[self.control_axis_number-1] != 'R':
                     try:
                         self.control_unit.init_axis(self.control_axis_number)
-                        print(f'Initialized motor {self.name}')
+                        logger.info('Initialized motor %s', self.name)
                     except:
-                        print(f'Failed to initilaize moto {self.name}')
+                        logger.error('Failed to initialize motor %s', self.name)
                 else:
-                    print(f'Motor {self.name} already initialized')
+                    logger.info('Motor %s already initialized', self.name)
                 self.set_absolute_mode()
                 self.read_current_position()
         except Exception:
@@ -192,19 +202,16 @@ class PS90_motor:
             self._read_parameters()
 
     def _read_parameters(self):
-        print('------------------------------------------')
-        print(f'Parameters for {self.name}, PS90 motor axis {self.control_axis_number}')
-        control_unit_status = self.control_unit.get_status(self.control_axis_number)
-        print('Motor status code from PS90 :', f'{control_unit_status[self.control_axis_number-1]}')
-        print('Movement mode :', self.control_unit.send(f'?MODE{self.control_axis_number}')) # set with ABSOL<n> or RELAT<n>
-        print('Motor velocity :', self.control_unit.send(f'?PVEL{self.control_axis_number}'))
-        print('Motor acceleration :', self.control_unit.send(f'?ACC{self.control_axis_number}'))
-        print('Motor deacceleration :', self.control_unit.send(f'?DACC{self.control_axis_number}'))
-        print('Limit switch release speed :', self.control_unit.send(f'?FVEL{self.control_axis_number}'))
-        print('Current motor setpoint :', self.control_unit.send(f'?PSET{self.control_axis_number}'))
-        print('Current position counter :', self.control_unit.send(f'?CNT{self.control_axis_number}'))
-        print('Current encoder position :', self.control_unit.send(f'?ENCPOS{self.control_axis_number}'))
-        print('------------------------------------------')
+        axis = self.control_axis_number
+        control_unit_status = self.control_unit.get_status(axis)
+        logger.info('Parameters for %s, PS90 motor axis %d: status code %s, mode %s (ABSOL/RELAT), '
+                    'velocity %s, acceleration %s, deceleration %s, limit switch release speed %s, '
+                    'setpoint %s, position counter %s, encoder position %s',
+                    self.name, axis, control_unit_status[axis-1],
+                    self.control_unit.send(f'?MODE{axis}'), self.control_unit.send(f'?PVEL{axis}'),
+                    self.control_unit.send(f'?ACC{axis}'), self.control_unit.send(f'?DACC{axis}'),
+                    self.control_unit.send(f'?FVEL{axis}'), self.control_unit.send(f'?PSET{axis}'),
+                    self.control_unit.send(f'?CNT{axis}'), self.control_unit.send(f'?ENCPOS{axis}'))
 
     def free(self):
         self.control_unit.send(f'AXIS{self.control_axis_number}=0')
@@ -275,7 +282,7 @@ class PS90_motor:
     def _move_absolute(self, target_position:int):
         # caller must hold self.motion_lock
         # Returns the final position (steps); raises MotionError if the target is not reached.
-        print(f"Moving {self.name} to {target_position}")
+        logger.info('Moving %s to %s', self.name, target_position)
         self._stop_requested.clear()
         self.state = DeviceState.MOVING
         try:
@@ -294,7 +301,7 @@ class PS90_motor:
             actual_pos = self.read_current_position()
         except:
             self.state = DeviceState.FAULT
-            print(f'Error during movement of axis {self.control_axis_number}.')
+            logger.exception('Error during movement of %s (axis %d)', self.name, self.control_axis_number)
             raise
 
         if self._stop_requested.is_set():
@@ -304,7 +311,7 @@ class PS90_motor:
         if abs(actual_pos - target_position) > self.position_tolerance_steps:
             self.state = DeviceState.FAULT
             message = self._motion_failure('wrong final position', target_position)
-            print(message)
+            logger.error(message)
             raise MotionError(message)
         self.state = DeviceState.ON
         return actual_pos
@@ -539,16 +546,19 @@ def load_config(path: str = None, initialize: bool = None):
             cfg = yaml.safe_load(fh) or {}
         if initialize is None:
             initialize = bool(cfg.get('initialize_on_startup', False))
+        serial_logger.setLevel(logging.DEBUG if cfg.get('log_serial') else logging.WARNING)
         created = _load_motor_config_from_dict(cfg, initialize=initialize)
     except Exception as e:
         config_error = f'Failed to load config {path}: {e}'
-        print(config_error)
+        logger.error(config_error)
         return []
     config_error = None
     for name, err in controller_errors.items():
-        print(f'Controller {name}: {err}')
+        logger.error('Controller %s: %s', name, err)
     for name, err in motor_errors.items():
-        print(f'Motor {name}: {err}')
+        logger.error('Motor %s: %s', name, err)
+    logger.info('Config %s loaded: %d controller(s), %d motor(s) (%s created now)',
+                path, len(controllers), len(motors), ', '.join(created) or 'none')
     return created
 
 
@@ -754,19 +764,19 @@ def shutdown_close_controllers():
         if m.state == DeviceState.MOVING:
             try:
                 m.stop()
-                print(f"Shutdown: stopped moving motor {name}")
+                logger.warning('Shutdown: stopped moving motor %s', name)
             except Exception as e:
-                print(f"Shutdown: failed to stop motor {name}: {e}")
+                logger.error('Shutdown: failed to stop motor %s: %s', name, e)
     if not controllers:
-        print("Shutdown: no controllers to close")
+        logger.info('Shutdown: no controllers to close')
         return
-    print(f"Shutdown: closing {len(controllers)} controller(s)")
+    logger.info('Shutdown: closing %d controller(s)', len(controllers))
     for name, inst in list(controllers.items()):
         try:
             inst.close()
-            print(f"Closed controller: {name}")
+            logger.info('Closed controller: %s', name)
         except Exception as e:
-            print(f"Error closing controller {name}: {e}")
+            logger.error('Error closing controller %s: %s', name, e)
         # remove from registry
         try:
             del controllers[name]
@@ -775,4 +785,4 @@ def shutdown_close_controllers():
     # reset default name
     global default_controller_name
     default_controller_name = None
-    print("Shutdown: controller registry cleared")
+    logger.info('Shutdown: controller registry cleared')

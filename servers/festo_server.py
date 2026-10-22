@@ -4,6 +4,9 @@ import os
 
 from common.states import DeviceState
 from common.version import get_version
+from common.logging_setup import setup_logging, add_action_logging
+
+logger = setup_logging('festo_server')
 
 try:
     import nidaqmx
@@ -26,6 +29,7 @@ async def lifespan(app):
 
 
 app = FastAPI(lifespan=lifespan)
+add_action_logging(app, logger)
 
 # Registry of NI-DAQ controller instances (keyed by name)
 controllers = {}
@@ -316,13 +320,14 @@ def load_config(path: str = None):
         created = _load_config_from_dict(cfg)
     except Exception as e:
         config_error = f'Failed to load config {path}: {e}'
-        print(config_error)
+        logger.error(config_error)
         return [], []
     config_error = None
     for name, err in controller_errors.items():
-        print(f'Controller {name}: {err}')
+        logger.error('Controller %s: %s', name, err)
     for name, err in actuator_errors.items():
-        print(f'Actuator {name}: {err}')
+        logger.error('Actuator %s: %s', name, err)
+    logger.info('Config %s loaded: %d controller(s), %d actuator(s)', path, len(controllers), len(actuators))
     return created
 
 

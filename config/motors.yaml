@@ -10,6 +10,10 @@
 # the shell with init_all() / init(motor). Moves are refused until then.
 initialize_on_startup: false
 
+# Log every command sent to the PS90 and its response (DEBUG level, in
+# logs/motion_server.log). Verbose: enable only to diagnose a problem.
+log_serial: false
+
 controllers:
   - name: main_ps90
     type: ps90

@@ -196,3 +196,18 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 12 : journalisation persistante
+
+- [ ] **Trace d'un mouvement distant.** Depuis un autre PC que `pc-moteurs`, faire un `mv(sx, ...)`. Sur `pc-moteurs`, ouvrir `logs\motion_server.log` (dans le dossier du dépôt).
+  *Attendu :* deux lignes `POST /motors/move_abs/sx {"position": ...} from <IP du PC>` : `started`, puis `HTTP 200 in ... s -> {... 'position': ...}`.
+- [ ] **Trace d'une erreur.** Provoquer une erreur (ex. `mv` d'un moteur avant `init_all()`).
+  *Attendu :* ligne `ERROR` avec le message d'erreur.
+- [ ] **FESTO et spectro.** Un `on(festo_1)` et un `spec.acquire(...)` apparaissent dans `logs\festo_server.log` et `logs\spectro_server.log` (sur leurs PC respectifs).
+- [ ] **Log série (diagnostic).** Mettre `log_serial: true` dans `config/motors.yaml`, redémarrer le serveur moteurs, faire un `wm(sx)`.
+  *Attendu :* lignes `COM25 >> ?CNT2` et `COM25 << b'...'` dans le log, **ce qui montre aussi le caractère de fin de réponse réel du PS90** (à comparer avec `PS90_TERMINATOR`, tâche 2). Remettre `log_serial: false` ensuite.
+- [ ] **Rotation.** Le lendemain, vérifier qu'un fichier `motion_server.log.AAAA-MM-JJ` a été créé.
+
+Remarques / résultats :
+
