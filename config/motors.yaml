@@ -8,6 +8,8 @@ controllers:
     type: ps90
     port: COM25
     baud: 9600
+    # timeout: 1.0          # serial read timeout (s) for queries
+    # command_delay: 0.05   # pause (s) after commands without response
 
 motors:
   - name: faty

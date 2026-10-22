@@ -10,8 +10,11 @@ import time
 
 
 class FakePS90Serial:
-    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, **kwargs):
+    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, timeout=1, **kwargs):
         self.port = port
+        self.timeout = timeout
+        self.disconnected = False      # simulate an unplugged cable: no response at all
+        self.overrides = {}            # cmd -> raw response, to simulate bad answers
         self.n_axes = n_axes
         self.move_polls = move_polls   # number of ?ASTAT polls an axis stays in 'T'
         self.positions = [0] * n_axes
@@ -34,7 +37,12 @@ class FakePS90Serial:
             if self._pending is not None:
                 self.collisions += 1
             self.commands.append(cmd)
-            response = self._handle(cmd)
+            if self.disconnected:
+                response = None
+            elif cmd in self.overrides:
+                response = self.overrides[cmd]
+            else:
+                response = self._handle(cmd)
             self._pending = response
         # widen the race window so unprotected interleavings show up reliably
         time.sleep(0.001)
@@ -44,6 +52,10 @@ class FakePS90Serial:
         with self._internal:
             r, self._pending = self._pending, None
         return ((r + '\r') if r else '').encode()
+
+    def read_until(self, expected=b'\n'):
+        # a real port would block up to `timeout` before returning what it got
+        return self.read_all()
 
     def close(self):
         pass

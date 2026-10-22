@@ -28,43 +28,68 @@ motors = {}
 DEFAULT_MOTOR_CONFIG = os.path.join(os.path.dirname(__file__), '..', 'config', 'motors.yaml')
 
 
+# Character ending each PS90 response.
+# À VÉRIFIER dans le manuel OWIS PS90 (CR assumed, as for commands).
+PS90_TERMINATOR = b'\r'
+# Default serial read timeout (s): a query not answered within this delay fails.
+PS90_DEFAULT_TIMEOUT = 1.0
+# Pause after a command that returns no response, before the next command.
+# À VÉRIFIER dans le manuel OWIS PS90 (minimal delay between commands, if any).
+# Kept at the former fixed delay (0.05 s) until confirmed.
+PS90_DEFAULT_COMMAND_DELAY = 0.05
+
+
 class MotorBusyError(RuntimeError):
     """Raised when a motion is requested on a motor that is already moving."""
 
 
 class PS90:
-    def __init__(self, port='COM25', baudrate=9600):
+    def __init__(self, port='COM25', baudrate=9600,
+                 timeout=PS90_DEFAULT_TIMEOUT, command_delay=PS90_DEFAULT_COMMAND_DELAY):
         if serial is None:
             raise RuntimeError("pyserial is required but not installed")
         # FastAPI runs `def` routes in a thread pool: every exchange on the serial
         # port must hold this lock so concurrent requests cannot interleave.
         # Reentrant so multi-command sequences can hold it around several send().
         self.lock = threading.RLock()
+        self.command_delay = command_delay
         self.ser = serial.Serial(port, baudrate,
-                    timeout=1,
+                    timeout=timeout,
                     stopbits=1,
                     parity='N',
                     bytesize=8)
         time.sleep(1)  # allow connection to settle
 
     def send(self, cmd):
+        """Send a command. Queries (starting with '?') return the response string;
+        other commands return None. Raises TimeoutError if a query gets no complete
+        response within the serial timeout."""
         full_cmd = cmd + '\r'   # OWIS uses CR as end character
         with self.lock:
             self.ser.reset_input_buffer()
             self.ser.write(full_cmd.encode())
-            time.sleep(0.05)
-            response = self.ser.read_all().decode().strip()
-        return response
+            if not cmd.startswith('?'):
+                if self.command_delay:
+                    time.sleep(self.command_delay)
+                return None
+            raw = self.ser.read_until(PS90_TERMINATOR)
+        if not raw.endswith(PS90_TERMINATOR):
+            raise TimeoutError(f'No complete response from PS90 to "{cmd}" '
+                               f'within {self.ser.timeout} s (received: {raw!r})')
+        return raw.decode(errors='replace').strip()
 
     def read(self):
         return
 
-    def get_status(self):
+    def get_status(self, axis=None):
+        """Return the ?ASTAT string (one character per axis). If `axis` is given,
+        check that the response covers that axis."""
         response = self.send('?ASTAT')
-        if response=='':
-            return 'Problem getting status from PS90 unit.'
-        else:
-            return response
+        if response == '':
+            raise RuntimeError('Empty status response from PS90 to "?ASTAT"')
+        if axis is not None and len(response) < axis:
+            raise RuntimeError(f'Status response from PS90 too short for axis {axis}: {response!r}')
+        return response
 
     def init_axis(self, axis):
         with self.lock:
@@ -98,7 +123,7 @@ class PS90_motor:
         self._acquire_motion_lock()
         try:
             with self.control_unit.lock:
-                control_unit_status = self.control_unit.get_status()
+                control_unit_status = self.control_unit.get_status(self.control_axis_number)
                 if control_unit_status[self.control_axis_number-1] != 'R':
                     try:
                         self.control_unit.init_axis(self.control_axis_number)
@@ -123,7 +148,7 @@ class PS90_motor:
     def _read_parameters(self):
         print('------------------------------------------')
         print(f'Parameters for {self.name}, PS90 motor axis {self.control_axis_number}')
-        control_unit_status = self.control_unit.get_status()
+        control_unit_status = self.control_unit.get_status(self.control_axis_number)
         print('Motor status code from PS90 :', f'{control_unit_status[self.control_axis_number-1]}')
         print('Movement mode :', self.control_unit.send(f'?MODE{self.control_axis_number}')) # set with ABSOL<n> or RELAT<n>
         print('Motor velocity :', self.control_unit.send(f'?PVEL{self.control_axis_number}'))
@@ -153,7 +178,13 @@ class PS90_motor:
         self.control_unit.send(f'RELAT{self.control_axis_number}')
         
     def read_current_position(self):
-        self.current_position_step = int(self.control_unit.send(f'?CNT{self.control_axis_number}'))
+        response = self.control_unit.send(f'?CNT{self.control_axis_number}')
+        try:
+            position = int(response)
+        except ValueError:
+            raise ValueError(f'Invalid position from PS90 for motor {self.name} '
+                             f'(?CNT{self.control_axis_number}): {response!r}') from None
+        self.current_position_step = position
         return self.current_position_step
         
     def move_absolute(self, target_position:int):
@@ -173,7 +204,7 @@ class PS90_motor:
                 self.control_unit.send(f'PGO{self.control_axis_number}')
             # the serial lock is taken and released at each ?ASTAT poll, so that
             # reads (wm) and other axes stay available during the motion
-            while self.control_unit.send(f'?ASTAT')[self.control_axis_number-1]=='T':
+            while self.control_unit.get_status(self.control_axis_number)[self.control_axis_number-1]=='T':
                     time.sleep(0.05)
             actual_pos = self.read_current_position()
         except:
@@ -321,8 +352,11 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
             if ctype == 'ps90':
                 port = ctrl.get('port') or os.environ.get('PS90_PORT', 'COM25')
                 baud = int(ctrl.get('baud', 9600))
+                timeout = float(ctrl.get('timeout', PS90_DEFAULT_TIMEOUT))
+                command_delay = float(ctrl.get('command_delay', PS90_DEFAULT_COMMAND_DELAY))
                 try:
-                    controllers[cname] = PS90(port=port, baudrate=baud)
+                    controllers[cname] = PS90(port=port, baudrate=baud,
+                                              timeout=timeout, command_delay=command_delay)
                     if default_controller_name is None:
                         default_controller_name = cname
                 except Exception as e:
