@@ -101,7 +101,7 @@ Remarques / résultats :
 ## Tâche 6 : cohérence des adresses des serveurs
 
 Préparation (une seule fois) :
-- [ ] **Noms des PC.** Remplacer `pc-moteurs` / `pc-spectro` dans `config/servers.yaml` (et dans le tableau « Network » du `README.md`) par les vrais noms des PC du banc, tels que déclarés dans le fichier `hosts`.
+- [ ] **Noms des PC.** Remplacer `pc-moteurs` / `pc-spectro` dans `config/servers.yaml` (et dans le tableau « Bench architecture » du `README.md`) par les vrais noms des PC du banc, tels que déclarés dans le fichier `hosts`.
   Les serveurs moteurs et FESTO tournent tous deux sur `pc-moteurs`, le spectromètre sur `pc-spectro`. **Attention :** l'ancien `start_motion.ps1` lançait le serveur moteurs en `192.168.1.3` ; il faut maintenant le lancer sur `pc-moteurs`.
 - [ ] **Fichier `hosts`.** Sur **chacun des 5 PC**, vérifier que `C:\Windows\System32\drivers\etc\hosts` contient les noms utilisés (`ping pc-moteurs` doit répondre depuis chaque PC).
 
@@ -191,7 +191,7 @@ Remarques / résultats :
   *Attendu :* erreur 405 « Method Not Allowed », aucun mouvement. (L'ancienne forme `.../motors/move_abs/sx/100` renvoie 404, sans mouvement non plus.) Idem pour `http://pc-moteurs:8003/festo/actuators/on/festo_1` : 405, l'actionneur ne bouge pas.
 - [ ] **`/docs`.** Sur `http://pc-moteurs:8001/docs`, `POST /motors/move_rel/{motor}` → « Try it out », motor = `sx`, corps `{"delta": 100}` → « Execute ».
   *Attendu :* le moteur se déplace de 100 pas ; la réponse contient la position finale.
-- [ ] **Scripts personnels.** Si des scripts appellent directement les URL des serveurs (`requests.get(.../move_abs/...)`), les adapter (voir la liste des endpoints dans le README).
+- [ ] **Scripts personnels.** Si des scripts appellent directement les URL des serveurs (`requests.get(.../move_abs/...)`), les adapter (voir la liste des endpoints dans `docs/TECHNICAL.md`).
 
 Remarques / résultats :
 
@@ -259,9 +259,9 @@ Remarques / résultats :
   *Attendu :* message rouge « Python virtual environment not found ... », pas de traceback. Remettre `.venv`.
 - [ ] **Port explicite.** `.\start_motion.ps1 -Port 8011` démarre sur 8011 (l'arrêter ensuite).
 - [ ] **Politique d'exécution.** Si Windows refuse le script : `powershell -ExecutionPolicy Bypass -File .\start_motion.ps1` fonctionne.
-- [ ] **Pare-feu.** Appliquer la règle du README (section Firewall) sur `pc-moteurs` et `pc-spectro`, puis lancer le shell depuis un autre PC : les trois serveurs sont joignables.
-- [ ] **(Optionnel) Démarrage automatique.** Si souhaité, créer la tâche planifiée du README pour un serveur, fermer la session puis la rouvrir : le serveur démarre tout seul.
-- [ ] **README.** Relire les sections « Architecture » (noms des PC), « Points to check on the hardware » et « Upgrading from the previous version ».
+- [ ] **Pare-feu.** Appliquer la règle de `docs/TECHNICAL.md` (section Firewall) sur `pc-moteurs` et `pc-spectro`, puis lancer le shell depuis un autre PC : les trois serveurs sont joignables.
+- [ ] **(Optionnel) Démarrage automatique.** Si souhaité, créer la tâche planifiée de `docs/TECHNICAL.md` pour un serveur, fermer la session puis la rouvrir : le serveur démarre tout seul.
+- [ ] **Documentation.** Relire le `README.md` (noms des PC dans « Bench architecture ») et, dans `docs/TECHNICAL.md`, « Points to check on the hardware » et « Upgrading from the previous version ».
 
 Remarques / résultats :
 

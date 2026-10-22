@@ -1,7 +1,7 @@
 # Start the motion server on this PC.
 # Listens on all network interfaces; the port comes from config/servers.yaml
 # (motion_server), unless given explicitly: .\start_motion.ps1 -Port 8001
-# Can be launched from any directory (also from a scheduled task, see README).
+# Can be launched from any directory (also from a scheduled task, see docs/TECHNICAL.md).
 param([int]$Port = 0)
 
 Set-Location $PSScriptRoot
