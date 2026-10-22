@@ -2,6 +2,8 @@
 # name: logical name used in API endpoints
 # axis: PS90 axis number (integer)
 # step_to_mm: conversion factor (optional)
+# max_move_duration: max duration of a move in s, then the axis is stopped (optional, default 120)
+# position_tolerance_steps: accepted final position error in steps (optional, default 0)
 
 controllers:
   - name: main_ps90

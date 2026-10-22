@@ -4,6 +4,7 @@ import os
 import threading
 
 from common.states import DeviceState
+from common.errors import MotionError, MotorBusyError
 
 try:
     import serial
@@ -37,10 +38,13 @@ PS90_DEFAULT_TIMEOUT = 1.0
 # À VÉRIFIER dans le manuel OWIS PS90 (minimal delay between commands, if any).
 # Kept at the former fixed delay (0.05 s) until confirmed.
 PS90_DEFAULT_COMMAND_DELAY = 0.05
+# Command stopping one axis ({axis} is replaced by the axis number).
+# À VÉRIFIER dans le manuel OWIS PS90 (axis stop command).
+PS90_STOP_AXIS_CMD = 'STOP{axis}'
 
-
-class MotorBusyError(RuntimeError):
-    """Raised when a motion is requested on a motor that is already moving."""
+# Per-motor defaults, overridable in config/motors.yaml
+DEFAULT_MAX_MOVE_DURATION = 120.0     # s; beyond this the axis is stopped and the move fails
+DEFAULT_POSITION_TOLERANCE_STEPS = 0  # accepted |final position - target|, in steps
 
 
 class PS90:
@@ -103,11 +107,15 @@ class PS90:
 
 
 class PS90_motor:
-    def __init__(self, name, control_unit, control_axis_number, step_to_mm=1):
+    def __init__(self, name, control_unit, control_axis_number, step_to_mm=1,
+                 max_move_duration=DEFAULT_MAX_MOVE_DURATION,
+                 position_tolerance_steps=DEFAULT_POSITION_TOLERANCE_STEPS):
         self.control_unit = control_unit
         self.name = name
         self.control_axis_number = control_axis_number
         self.step_to_mm = step_to_mm
+        self.max_move_duration = max_move_duration
+        self.position_tolerance_steps = position_tolerance_steps
         self.current_position_step = None
         self.state = DeviceState.OFF
         # Only one motion at a time per motor; a second request fails fast (HTTP 409).
@@ -171,6 +179,25 @@ class PS90_motor:
         finally:
             self.motion_lock.release()
     
+    def _send_stop(self):
+        self.control_unit.send(PS90_STOP_AXIS_CMD.format(axis=self.control_axis_number))
+
+    def _axis_status(self):
+        return self.control_unit.get_status(self.control_axis_number)[self.control_axis_number-1]
+
+    def _motion_failure(self, reason, target_position):
+        """Build a readable failure message with the reached position and axis status."""
+        try:
+            reached = self.read_current_position()
+        except Exception as e:
+            reached = f'unknown ({e})'
+        try:
+            axis_status = repr(self._axis_status())
+        except Exception as e:
+            axis_status = f'unknown ({e})'
+        return (f'Motor {self.name}: {reason} '
+                f'(target {target_position}, reached {reached}, axis status {axis_status})')
+
     def set_absolute_mode(self):
         self.control_unit.send(f'ABSOL{self.control_axis_number}')
         
@@ -196,6 +223,7 @@ class PS90_motor:
 
     def _move_absolute(self, target_position:int):
         # caller must hold self.motion_lock
+        # Returns the final position (steps); raises MotionError if the target is not reached.
         print(f"Moving {self.name} to {target_position}")
         self.state = DeviceState.MOVING
         try:
@@ -204,19 +232,26 @@ class PS90_motor:
                 self.control_unit.send(f'PGO{self.control_axis_number}')
             # the serial lock is taken and released at each ?ASTAT poll, so that
             # reads (wm) and other axes stay available during the motion
-            while self.control_unit.get_status(self.control_axis_number)[self.control_axis_number-1]=='T':
-                    time.sleep(0.05)
+            deadline = time.monotonic() + self.max_move_duration
+            while self._axis_status()=='T':
+                if time.monotonic() > deadline:
+                    self._send_stop()
+                    raise MotionError(self._motion_failure(
+                        f'move not finished after {self.max_move_duration} s, stop sent', target_position))
+                time.sleep(0.05)
             actual_pos = self.read_current_position()
         except:
             self.state = DeviceState.FAULT
-            print(f'Error sending movement command to axis {self.control_axis_number}.')
+            print(f'Error during movement of axis {self.control_axis_number}.')
             raise
 
+        if abs(actual_pos - target_position) > self.position_tolerance_steps:
+            self.state = DeviceState.FAULT
+            message = self._motion_failure('wrong final position', target_position)
+            print(message)
+            raise MotionError(message)
         self.state = DeviceState.ON
-        if int(actual_pos)==target_position:
-            return 'Move OK'
-        else:
-            print('Wrong final position')
+        return actual_pos
     
     def move_relative(self, displacement_step:int):
         self._acquire_motion_lock()
@@ -402,11 +437,15 @@ def _load_motor_config_from_dict(cfg: dict, initialize: bool = False):
         step = float(entry.get('step_to_mm', 1.0))
         velocity = entry.get('velocity')
         acceleration = entry.get('acceleration')
+        max_move_duration = float(entry.get('max_move_duration', DEFAULT_MAX_MOVE_DURATION))
+        position_tolerance_steps = int(entry.get('position_tolerance_steps', DEFAULT_POSITION_TOLERANCE_STEPS))
 
         if name in motors:
             continue
         ctrl = controllers[controller_name]
-        motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step)
+        motor = PS90_motor(name=name, control_unit=ctrl, control_axis_number=axis, step_to_mm=step,
+                           max_move_duration=max_move_duration,
+                           position_tolerance_steps=position_tolerance_steps)
         motors[name] = motor
         created.append(name)
         # apply motion parameters if provided
@@ -463,19 +502,20 @@ def motors_move_abs(motor: str, position: int):
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"result": res}
+    return {"result": "ok", "motor": motor, "position": res}
 
 
 @app.get("/motors/move_rel/{motor}/{delta}")
 def motors_move_rel(motor: str, delta: int):
     m = get_motor(motor)
     try:
-        m.move_relative(delta)
+        res = m.move_relative(delta)
     except MotorBusyError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    return {"result": "move_command_sent", "motor": motor}
+    return {"result": "ok", "motor": motor, "position": res}
+
 
 
 @app.get("/motors/read/{motor}")

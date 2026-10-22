@@ -1,5 +1,6 @@
 from common.http_client import safe_get, DEFAULT_TIMEOUT
 from common.servers import get_server_url
+from common.errors import ServerError, MotionError, MotorBusyError
 import os
 try:
     import yaml
@@ -73,6 +74,15 @@ def _read_motor_position(motor):
     return {'steps': steps, 'mm': mm}
 
 
+def _motion_error(motor, exc):
+    """Convert a failed move request into a MotionError with a readable message."""
+    if isinstance(exc, ServerError):
+        if exc.status_code == 409:
+            return MotorBusyError(str(exc.detail))
+        return MotionError(str(exc.detail))
+    return MotionError(f"Motor {motor.name}: {exc}")
+
+
 def _collect_positions(motors):
     positions = {}
     for motor in motors:
@@ -83,12 +93,14 @@ def _collect_positions(motors):
     return positions
 
 
-def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
+def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise_on_error: bool = True):
     """Move one or more motors. Usage: mv(motor1, pos1, motor2, pos2, ...)
 
     Each motor argument must be a `Motor` instance and each position a number.
     Positions are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
     `timeout=None` waits indefinitely for the server response.
+    A failed move raises MotionError (remaining motors are not moved); with
+    `raise_on_error=False` errors are returned in the results list instead.
     """
     if len(args) % 2 != 0:
         raise ValueError("mv requires pairs of (Motor, position)")
@@ -124,6 +136,8 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
             r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
         except Exception as e:
+            if raise_on_error:
+                raise _motion_error(motor, e) from e
             results.append((motor.name, {'error': str(e)}))
 
     if show_positions:
@@ -132,12 +146,14 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
 
     return results
 
-def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
+def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise_on_error: bool = True):
     """Move one or more motors relative to current position. Usage: mvr(motor1, delta1, motor2, delta2, ...)
 
     Each motor argument must be a `Motor` instance and each delta a number.
     Deltas are interpreted as millimetres if the Motor has a non-default step_to_mm; otherwise as steps.
     `timeout=None` waits indefinitely for the server response.
+    A failed move raises MotionError (remaining motors are not moved); with
+    `raise_on_error=False` errors are returned in the results list instead.
     """
     if len(args) % 2 != 0:
         raise ValueError("mvr requires pairs of (Motor, delta)")
@@ -173,6 +189,8 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT):
             r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=timeout)
             results.append((motor.name, r.json()))
         except Exception as e:
+            if raise_on_error:
+                raise _motion_error(motor, e) from e
             results.append((motor.name, {'error': str(e)}))
 
     if show_positions:

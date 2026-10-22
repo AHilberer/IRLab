@@ -3,6 +3,7 @@
 
 import IPython
 from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, Motor
+from common.errors import MotionError
 from clients.spectro_client import Spectrometer
 from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
 from common.http_client import safe_get, DEFAULT_TIMEOUT

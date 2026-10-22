@@ -45,3 +45,21 @@ Préparation : serveur moteurs démarré, shell IPython ouvert.
 
 Remarques / résultats :
 
+---
+
+## Tâche 3 : remonter les erreurs de mouvement
+
+Préparation : choisir un axe sur lequel aller en **fin de course est sans danger**, et noter sa plage utile.
+
+- [ ] **Mouvement normal.** `mv(moteur, position)` habituel.
+  *Attendu :* aucun changement visible ; le résultat contient la position finale réelle (`'position': ...`).
+- [ ] **Fin de course.** Sur l'axe choisi, `mv()` vers une position au-delà de la fin de course.
+  *Attendu :* `mv()` lève une `MotionError` qui indique le moteur, la consigne, la position atteinte et le caractère d'état de l'axe (`axis status`). **Noter ce caractère d'état** (signification à rapprocher du manuel PS90).
+- [ ] **Scan qui traverse la limite.** `ascan()` sur ce même axe, avec des points au-delà de la fin de course.
+  *Attendu :* le scan s'arrête au premier point en erreur, affiche « Scan stopped at point i/N », et **ne ramène pas** le moteur à sa position initiale (message « NOT returned »).
+- [ ] **Délai maximal.** Dans `config/motors.yaml`, mettre temporairement `max_move_duration: 2` sur un moteur, redémarrer le serveur moteurs, puis lancer un mouvement qui dure plus de 2 s, **à faible vitesse**.
+  *Attendu :* l'axe est arrêté au bout de 2 s et `mv()` lève une `MotionError` « move not finished after 2.0 s, stop sent ». Ce test vérifie aussi la commande d'arrêt (`PS90_STOP_AXIS_CMD`, voir tâche 4). Remettre ensuite la valeur d'origine.
+- [ ] **Tolérance de position.** Si un axe s'arrête régulièrement à ±1 pas de la consigne, régler `position_tolerance_steps` dans `config/motors.yaml` pour ce moteur.
+
+Remarques / résultats :
+

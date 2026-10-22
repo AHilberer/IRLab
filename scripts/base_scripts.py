@@ -14,6 +14,7 @@ import h5py
 import numpy as np
 
 from clients.motion_client import mv, mvr, wm
+from common.errors import MotionError
 
 if os.name != "nt":
     import termios
@@ -22,10 +23,25 @@ else:
     import msvcrt
 
 
+def _run_scan_points(motor: Any, points, initial_value):
+    """Move `motor` through `points`. On a motion error, stop the scan,
+    report the point reached and leave the motor where it is (no automatic return)."""
+    npts = len(points)
+    for i, x in enumerate(points, start=1):
+        try:
+            mv(motor, float(x), show_positions=False)
+        except MotionError as e:
+            print(f"\nScan stopped at point {i}/{npts} (target {float(x):g}): {e}")
+            print(f"Motor {motor.name} was NOT returned to its initial position ({initial_value:g}): "
+                  f"check the axis before moving it again.")
+            raise
+
+
 def ascan(motor: Any, start: float, stop: float, npts: int):
     """Move `motor` through `npts` linearly spaced positions from start to stop.
     
     Returns the motor to its initial position after the scan completes.
+    Stops at the first motion error, without returning to the initial position.
     """
     # Read initial position
     initial_pos = wm(motor)
@@ -34,8 +50,7 @@ def ascan(motor: Any, start: float, stop: float, npts: int):
         initial_value = initial_value['mm'] if 'mm' in initial_value else initial_value['steps']
     
     # Perform scan
-    for x in np.linspace(start, stop, npts):
-        mv(motor, float(x), show_positions=False)
+    _run_scan_points(motor, np.linspace(start, stop, npts), initial_value)
     
     # Return to initial position
     mv(motor, initial_value, show_positions=False)
@@ -45,6 +60,7 @@ def dscan(motor: Any, start_delta: float, stop_delta: float, npts: int):
     
     `start_delta` and `stop_delta` are relative offsets from the current position.
     Returns the motor to its initial position after the scan completes.
+    Stops at the first motion error, without returning to the initial position.
     """
     # Read initial position
     initial_pos = wm(motor)
@@ -57,8 +73,7 @@ def dscan(motor: Any, start_delta: float, stop_delta: float, npts: int):
     stop_abs = initial_value + stop_delta
     
     # Perform scan with absolute positions
-    for x in np.linspace(start_abs, stop_abs, npts):
-        mv(motor, float(x), show_positions=False)
+    _run_scan_points(motor, np.linspace(start_abs, stop_abs, npts), initial_value)
     
     # Return to initial position
     mv(motor, initial_value, show_positions=False)

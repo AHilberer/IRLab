@@ -15,6 +15,7 @@ class FakePS90Serial:
         self.timeout = timeout
         self.disconnected = False      # simulate an unplugged cable: no response at all
         self.overrides = {}            # cmd -> raw response, to simulate bad answers
+        self.blocked = {}              # axis index -> (reached position, status char), e.g. limit switch
         self.n_axes = n_axes
         self.move_polls = move_polls   # number of ?ASTAT polls an axis stays in 'T'
         self.positions = [0] * n_axes
@@ -69,6 +70,8 @@ class FakePS90Serial:
                     if self._remaining_polls[i] <= 0:
                         self.status[i] = 'R'
                         self.positions[i] = self.setpoints[i]
+                        if i in self.blocked:
+                            self.positions[i], self.status[i] = self.blocked[i]
             return ''.join(self.status)
         if cmd.startswith('?CNT'):
             return str(self.positions[int(cmd[4:]) - 1])
@@ -80,6 +83,12 @@ class FakePS90Serial:
             axis = int(cmd[3:]) - 1
             self.status[axis] = 'T'
             self._remaining_polls[axis] = self.move_polls
+            return None
+        if cmd.startswith('STOP'):
+            axis = int(cmd[4:]) - 1
+            if self.status[axis] == 'T':
+                self.status[axis] = 'R'
+                self.positions[axis] = (self.positions[axis] + self.setpoints[axis]) // 2
             return None
         if cmd.startswith('?'):
             return '0'
