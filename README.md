@@ -18,12 +18,19 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-Run servers:
+Run servers, each on its own PC (see [Network](#network)), from the repository root:
+
+```powershell
+.\start_motion.ps1
+.\start_spectro.ps1
+.\start_festo.ps1
+```
+
+Each script listens on all network interfaces (`--host 0.0.0.0`) and reads its
+port from `config/servers.yaml`; `-Port <n>` overrides it. Equivalent manual command:
 
 ```bash
 uvicorn servers.motion_server:app --host 0.0.0.0 --port 8001
-uvicorn servers.spectro_server:app --host 0.0.0.0 --port 8002
-uvicorn servers.festo_server:app --host 0.0.0.0 --port 8003
 ```
 
 Start interactive shell:
@@ -32,9 +39,24 @@ Start interactive shell:
 python IRLab_shell.py
 ```
 
+## Network
+
+The bench PCs are on an isolated local network; machine names are resolved by
+the Windows `hosts` file of each PC (`C:\Windows\System32\drivers\etc\hosts`).
+`config/servers.yaml` uses these names, never IP addresses.
+
+| Server | Script | Runs on PC | Port | URL in `config/servers.yaml` |
+|---|---|---|---|---|
+| Motion (OWIS PS90) | `start_motion.ps1` | `pc-moteurs` (PC with the PS90 serial cable) | 8001 | `http://pc-moteurs:8001` |
+| Spectrometer (Andor) | `start_spectro.ps1` | `pc-spectro` (PC with the Andor camera) | 8002 | `http://pc-spectro:8002` |
+| FESTO (NI-DAQmx) | `start_festo.ps1` | `pc-moteurs` (PC with the NI cDAQ chassis) | 8003 | `http://pc-moteurs:8003` |
+
+`pc-moteurs` and `pc-spectro` are example names: replace them in this table and
+in `config/servers.yaml` with the real names of the bench PCs.
+
 ## Configuration
 
-- `config/servers.yaml`: default server URLs
+- `config/servers.yaml`: server URLs (machine names) and ports
 - `config/motors.yaml`: controllers, motors, and optional motion parameters
 - `config/festo.yaml`: NI-DAQ chassis and FESTO actuator channel mapping
 - `config/spectro.yaml`: Andor camera / Shamrock spectrograph device indices per named spectrometer

@@ -97,3 +97,22 @@ Remarques / résultats :
 
 Remarques / résultats :
 
+---
+
+## Tâche 6 : cohérence des adresses des serveurs
+
+Préparation (une seule fois) :
+- [ ] **Noms des PC.** Remplacer `pc-moteurs` / `pc-spectro` dans `config/servers.yaml` (et dans le tableau « Network » du `README.md`) par les vrais noms des PC du banc, tels que déclarés dans le fichier `hosts`.
+  Les serveurs moteurs et FESTO tournent tous deux sur `pc-moteurs`, le spectromètre sur `pc-spectro`. **Attention :** l'ancien `start_motion.ps1` lançait le serveur moteurs en `192.168.1.3` ; il faut maintenant le lancer sur `pc-moteurs`.
+- [ ] **Fichier `hosts`.** Sur **chacun des 5 PC**, vérifier que `C:\Windows\System32\drivers\etc\hosts` contient les noms utilisés (`ping pc-moteurs` doit répondre depuis chaque PC).
+
+Tests :
+- [ ] **Plus d'IP en dur.** `grep -rn "192.168" .` (ou `Select-String -Path * -Pattern "192.168" -Recurse` sous PowerShell) : seules restent les lignes d'exemple commentées de `config/servers.yaml` (et `IRLab_modifications.md`).
+- [ ] **Démarrage des serveurs.** Lancer `.\start_motion.ps1`, `.\start_spectro.ps1`, `.\start_festo.ps1` sur leurs PC respectifs.
+  *Attendu :* chaque script affiche le bon port (8001 / 8002 / 8003) et uvicorn écoute sur `0.0.0.0`.
+- [ ] **Shell depuis n'importe quel PC.** Lancer `python IRLab_shell.py` depuis au moins deux PC différents du banc (dont un qui ne fait tourner aucun serveur).
+  *Attendu :* les trois serveurs sont joignables (« ... server running »).
+- [ ] **Pare-feu** (si un serveur n'est pas joignable depuis un autre PC alors qu'il l'est en local) : les ports 8001 à 8003 doivent être ouverts en entrée sur les PC serveurs (traité en détail à la tâche 17).
+
+Remarques / résultats :
+
