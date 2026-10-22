@@ -136,3 +136,18 @@ def test_timeout_keeps_the_motor_busy_until_the_axis_is_at_rest(setup):
     r = client.post('/motors/move_abs/m1', json={'position': 1000})
     assert r.status_code == 500 and 'stop sent' in r.json()['detail']
     assert fake.status[0] == 'R'         # the error is returned once the axis is at rest
+
+
+def test_s_curve_moves_are_waited_for(setup):
+    """Manual: 'S' (S-curve positioning) is a moving state, like 'T'."""
+    fake, motors, client = setup
+    fake.moving_char = 'S'
+    r = client.post('/motors/move_abs/m1', json={'position': 777})
+    assert r.status_code == 200 and r.json()['position'] == 777
+
+
+def test_error_message_explains_the_axis_state(setup):
+    fake, motors, client = setup
+    fake.blocked[0] = (700, 'L')
+    detail = client.post('/motors/move_abs/m1', json={'position': 1000}).json()['detail']
+    assert "'L' (disabled after approaching a hardware limit switch" in detail

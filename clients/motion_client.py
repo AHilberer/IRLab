@@ -255,7 +255,8 @@ def stop(*motors):
 
 def init(*motors):
     """Initialize one or more motors (enable the axis, INIT if not ready, absolute mode).
-    Needed once after the motion server starts, before moving them. INIT can move the axis.
+    Needed once after the motion server starts, before moving them. INIT powers the motor
+    and activates its position control loop (it does not move the axis).
     Usage: init(motor1, motor2, ...)"""
     return _post_to_motors('init', _motor_names(motors), warn='initialize')
 

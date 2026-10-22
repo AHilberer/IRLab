@@ -48,8 +48,9 @@ The shell starts even if a server is not reachable (warning, then a summary of t
 servers and objects loaded); start the missing server and run `reconnect()`.
 
 Motor axes are **not** initialized at server startup (`initialize_on_startup: false` in
-`config/motors.yaml`), because INIT can move them. After starting the motion server, run
-`init_all()` once in the shell, watching the bench. Moves of non-initialized motors are refused.
+`config/motors.yaml`): INIT powers the motors, which should be a deliberate action. After
+starting the motion server, run `init_all()` once in the shell. Moves of non-initialized
+motors are refused.
 
 ## Network
 
@@ -145,7 +146,7 @@ In `IRLab_shell.py`, these are available directly:
 - `free(...)` release one or more motors
 - `control(...)` re-acquire control of one or more motors
 - `free_all_motors()` release all registered motors
-- `init(...)` / `init_all()` initialize motors (needed once after the motion server starts; INIT can move axes)
+- `init(...)` / `init_all()` initialize motors (needed once after the motion server starts; powers the motors)
 - `stop(...)` / `stop_all()` stop motors immediately
 - `reconnect()` retry the servers that were not reachable and create the missing motor / actuator objects
 - `check_all()` print the state of the three servers

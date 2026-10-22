@@ -10,7 +10,8 @@ import time
 
 
 class FakePS90Serial:
-    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, timeout=1, stop_polls=0, **kwargs):
+    def __init__(self, port=None, baudrate=9600, n_axes=9, move_polls=10, timeout=1, stop_polls=0,
+                 moving_char='T', late_ack=False, **kwargs):
         self.port = port
         self.timeout = timeout
         self.disconnected = False      # simulate an unplugged cable: no response at all
@@ -19,6 +20,9 @@ class FakePS90Serial:
         self.n_axes = n_axes
         self.move_polls = move_polls   # number of ?ASTAT polls an axis stays in 'T'
         self.stop_polls = stop_polls   # polls an axis stays in 'T' after STOP (deceleration)
+        self.moving_char = moving_char # ?ASTAT state while positioning ('T' trapezoidal, 'S' S-curve)
+        self.late_ack = late_ack       # TERM=2: "OK" after each command, arriving late
+        self._ack_due = False
         self.positions = [0] * n_axes
         self.setpoints = [0] * n_axes
         self.status = ['R'] * n_axes
@@ -39,13 +43,18 @@ class FakePS90Serial:
             if self._pending is not None:
                 self.collisions += 1
             self.commands.append(cmd)
+            if self.late_ack and cmd.startswith('?') and self._ack_due:
+                prefix = 'OK\r'
+            else:
+                prefix = ''
+            self._ack_due = self.late_ack and not cmd.startswith('?')
             if self.disconnected:
                 response = None
             elif cmd in self.overrides:
                 response = self.overrides[cmd]
             else:
                 response = self._handle(cmd)
-            self._pending = response
+            self._pending = (prefix + response) if (prefix and response is not None) else response
         # widen the race window so unprotected interleavings show up reliably
         time.sleep(0.001)
         return len(data)
@@ -57,7 +66,15 @@ class FakePS90Serial:
 
     def read_until(self, expected=b'\n'):
         # a real port would block up to `timeout` before returning what it got
-        return self.read_all()
+        with self._internal:
+            data = ((self._pending + '\r') if self._pending else '').encode()
+            i = data.find(expected)
+            if i < 0 or i + len(expected) == len(data):
+                self._pending = None
+                return data
+            rest = data[i + len(expected):].decode()
+            self._pending = rest[:-1] if rest.endswith('\r') else rest
+            return data[:i + len(expected)]
 
     def close(self):
         pass
@@ -66,7 +83,7 @@ class FakePS90Serial:
     def _handle(self, cmd):
         if cmd == '?ASTAT':
             for i in range(self.n_axes):
-                if self.status[i] == 'T':
+                if self.status[i] == self.moving_char:
                     self._remaining_polls[i] -= 1
                     if self._remaining_polls[i] <= 0:
                         self.status[i] = 'R'
@@ -82,12 +99,12 @@ class FakePS90Serial:
             return None
         if cmd.startswith('PGO'):
             axis = int(cmd[3:]) - 1
-            self.status[axis] = 'T'
+            self.status[axis] = self.moving_char
             self._remaining_polls[axis] = self.move_polls
             return None
         if cmd.startswith('STOP'):
             axis = int(cmd[4:]) - 1
-            if self.status[axis] == 'T':
+            if self.status[axis] == self.moving_char:
                 self.setpoints[axis] = (self.positions[axis] + self.setpoints[axis]) // 2
                 if self.stop_polls:
                     self._remaining_polls[axis] = self.stop_polls

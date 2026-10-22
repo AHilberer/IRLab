@@ -56,22 +56,58 @@ controller_errors = {}     # controller name -> error message
 motor_errors = {}          # motor name -> error message (registration or initialization)
 
 
-# Character ending each PS90 response.
-# À VÉRIFIER dans le manuel OWIS PS90 (CR assumed, as for commands).
+# Protocol details below come from the PS 90+ user manual (command set, chap. 17 and
+# attachment I); the older PS90 of the bench is assumed to behave the same.
+# À VÉRIFIER sur le banc pour le PS90 (ancienne version).
+
+# Character ending each PS90 response: CR with the default setting COMEND=0
+# (COMEND=1: CR+LF, also handled; COMEND=2: LF, NOT handled).
 PS90_TERMINATOR = b'\r'
 # Default serial read timeout (s): a query not answered within this delay fails.
 PS90_DEFAULT_TIMEOUT = 1.0
-# Pause after a command that returns no response, before the next command.
-# À VÉRIFIER dans le manuel OWIS PS90 (minimal delay between commands, if any).
-# Kept at the former fixed delay (0.05 s) until confirmed.
+# Pause after a command that returns no response, before the next command: the
+# manual gives a command processing time of about 20 to 40 ms between two commands.
 PS90_DEFAULT_COMMAND_DELAY = 0.05
-# Command stopping one axis ({axis} is replaced by the axis number).
-# À VÉRIFIER dans le manuel OWIS PS90 (axis stop command).
+# In terminal mode TERM=2, each command without response is acknowledged by "OK":
+# such a line read in place of a query response is skipped.
+PS90_ACK = 'OK'
+# Command stopping one axis ({axis} is replaced by the axis number): decelerates with
+# the preset ramp and halts.
 PS90_STOP_AXIS_CMD = 'STOP{axis}'
 # Command stopping all axes of a controller, sent by /motors/stop_all before the
-# per-axis stops. None: not used, only the per-axis stop of each registered motor
-# is sent. À VÉRIFIER dans le manuel OWIS PS90 (general stop command).
+# per-axis stops. None: not used, only the per-axis stop of each registered motor is
+# sent. The PS90 has MSTOP=<axis bit mask>, but the format of the mask depends on the
+# terminal mode (decimal with TERM=0, string of 0/1 with TERM=1 or 2), so it is not used.
 PS90_STOP_ALL_CMD = None
+
+# ?ASTAT returns one character per axis. States in which the axis is moving:
+PS90_MOVING_STATES = set('TSVPFWXYCN')
+# Meaning of each state, used in error messages
+PS90_AXIS_STATES = {
+    'I': 'initialized',
+    'O': 'disabled',
+    'R': 'initialized and ready',
+    'T': 'positioning in trapezoidal profile',
+    'S': 'positioning in S-curve profile',
+    'V': 'operating in velocity mode',
+    'P': 'reference motion in progress',
+    'F': 'releasing a limit switch',
+    'J': 'operating in joystick mode',
+    'L': 'disabled after approaching a hardware limit switch (MINSTOP/MAXSTOP)',
+    'B': 'stopped after approaching a brake switch (MINDEC/MAXDEC)',
+    'A': 'disabled after limit switch error',
+    'M': 'disabled after motion controller error',
+    'Z': 'disabled after timeout error',
+    'H': 'phase initialization active',
+    'U': 'not released',
+    'E': 'disabled after motion error',
+    'W': 'positioning in trapezoidal profile with WMS',
+    'X': 'positioning in S-curve profile with WMS',
+    'Y': 'operating in velocity mode with WMS',
+    'C': 'operating in velocity mode with continuous-path control',
+    'N': 'operating in piezo follow-up mode with WMS',
+    '?': 'error, unknown state',
+}
 
 class MoveAbsRequest(BaseModel):
     position: int    # target position, in steps
@@ -135,6 +171,10 @@ class PS90:
                 return None
             raw = self.ser.read_until(PS90_TERMINATOR)
             serial_logger.debug('%s << %r', self.port, raw)
+            if raw.strip() == PS90_ACK.encode():
+                # late "OK" acknowledging a previous command (TERM=2): read the real response
+                raw = self.ser.read_until(PS90_TERMINATOR)
+                serial_logger.debug('%s << %r', self.port, raw)
         if not raw.endswith(PS90_TERMINATOR):
             raise TimeoutError(f'No complete response from PS90 to "{cmd}" '
                                f'within {self.ser.timeout} s (received: {raw!r})')
@@ -188,7 +228,8 @@ class PS90_motor:
 
 
     def initialize_axis(self):
-        # INIT can move the axis: refuse while a motion is in progress
+        # INIT enables the power stage and the position control loop (the axis does not
+        # move: the reference run is REF). Refused while a motion is in progress.
         self._acquire_motion_lock()
         try:
             with self.control_unit.lock:
@@ -231,7 +272,7 @@ class PS90_motor:
         self.control_unit.send(f'AXIS{self.control_axis_number}=0')
 
     def control(self):
-        # INIT can move the axis: refuse while a motion is in progress
+        # re-enables the axis with INIT: refused while a motion is in progress
         self._acquire_motion_lock()
         try:
             self.control_unit.init_axis(self.control_axis_number)
@@ -252,7 +293,7 @@ class PS90_motor:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             try:
-                if self._axis_status() != 'T':
+                if self._axis_status() not in PS90_MOVING_STATES:
                     return
             except Exception:
                 return
@@ -268,7 +309,8 @@ class PS90_motor:
         except Exception as e:
             reached = f'unknown ({e})'
         try:
-            axis_status = repr(self._axis_status())
+            code = self._axis_status()
+            axis_status = f"'{code}' ({PS90_AXIS_STATES.get(code, 'unknown state code')})"
         except Exception as e:
             axis_status = f'unknown ({e})'
         return (f'Motor {self.name}: {reason} '
@@ -317,7 +359,7 @@ class PS90_motor:
             # the serial lock is taken and released at each ?ASTAT poll, so that
             # reads (wm), stop and other axes stay available during the motion
             deadline = time.monotonic() + self.max_move_duration
-            while self._axis_status()=='T':
+            while self._axis_status() in PS90_MOVING_STATES:
                 if time.monotonic() > deadline:
                     self._send_stop()
                     # keep the motion lock until the axis is at rest: no new move during deceleration
@@ -566,7 +608,7 @@ def load_config(path: str = None, initialize: bool = None):
     and reported by /status (degraded mode). Controllers already connected and motors
     already registered are left as they are, so calling it again retries only what
     failed. `initialize=None` uses `initialize_on_startup` from the YAML (default false:
-    INIT can move the axes).
+    INIT powers the motors, which is done on purpose from the shell).
     """
     global config_path, config_error
     if path is None:

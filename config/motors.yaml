@@ -16,8 +16,9 @@
 #   position_tolerance_steps  optional, accepted final position error in steps (default 0)
 
 # Initialize the axes (AXIS=1, INIT if not ready, absolute mode) when the server
-# starts. false (default): INIT can move the axes, so it is done on purpose from
-# the shell with init_all() / init(motor). Moves are refused until then.
+# starts. INIT powers the motors and activates their position control loop (it does
+# not move them). false (default): done on purpose from the shell with init_all() /
+# init(motor), e.g. after checking the bench. Moves are refused until then.
 initialize_on_startup: false
 
 # Log every command sent to the PS90 and its response (DEBUG level, in

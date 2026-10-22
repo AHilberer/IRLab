@@ -110,7 +110,7 @@ def _connect_motion():
     not_initialized = (status.get('motors') or {}).get('not_initialized', [])
     if not_initialized:
         print(f"  [INFO] Not initialized yet: {', '.join(not_initialized)}")
-        print("         Run init_all() (or init(motor)) before moving them. INIT can move the axes.")
+        print("         Run init_all() (or init(motor)) before moving them: it powers the motors.")
     return True
 
 

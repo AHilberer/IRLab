@@ -66,3 +66,13 @@ def test_command_delay_applies_only_to_commands(monkeypatch):
     t0 = time.monotonic()
     ctrl.send('ABSOL1')
     assert time.monotonic() - t0 >= 0.2
+
+
+def test_late_ok_acknowledgement_is_skipped(monkeypatch):
+    """Manual: with TERM=2 each command without response is acknowledged by "OK"."""
+    fake = FakePS90Serial(late_ack=True)
+    monkeypatch.setattr(ms.serial, 'Serial', lambda *a, **kw: fake)
+    ctrl = ms.PS90(port='FAKE', command_delay=0)
+    fake.positions[0] = 42
+    ctrl.send('ABSOL1')
+    assert ctrl.send('?CNT1') == '42'

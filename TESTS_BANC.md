@@ -31,9 +31,10 @@ Remarques / résultats :
 
 Préparation : serveur moteurs démarré, shell IPython ouvert.
 
-- [ ] **Avant tout : vérifier dans le manuel OWIS PS90** (points marqués `À VÉRIFIER` dans `servers/motion_server.py`) :
-  - le caractère de fin de réponse (`PS90_TERMINATOR`, supposé `\r`). Si c'est faux, **toutes** les lectures échoueront en timeout ;
-  - le délai minimal entre deux commandes (`PS90_DEFAULT_COMMAND_DELAY`, laissé à 0,05 s comme avant). Réglable par contrôleur avec `command_delay` dans `config/motors.yaml`.
+- [ ] **Réglages de communication du PS90** (d'après le manuel du PS90+, à confirmer sur l'ancien PS90) :
+  - fin de réponse : `CR` par défaut (`COMEND=0`). Le code gère `CR` et `CR+LF`, **pas `LF` seul** (`COMEND=2`) : dans ce cas toutes les lectures échoueraient en timeout. Le plus simple pour le voir : activer `log_serial: true` (tâche 12) et regarder la fin des réponses (`<< b'1234\r'`) ;
+  - délai entre commandes : le manuel indique 20 à 40 ms de traitement ; le code attend 0,05 s (réglable par contrôleur avec `command_delay` dans `config/motors.yaml`) ;
+  - mode terminal `TERM` : en `TERM=2`, le PS90 répond « OK » à chaque commande sans réponse ; le code ignore ces « OK », mais `TERM=0` reste le plus sûr.
 - [ ] **Lectures répétées.** `wm()` sur tous les moteurs, 20 fois de suite.
   *Attendu :* toujours une réponse correcte, jamais d'erreur.
 - [ ] **Mouvements normaux.** Quelques `mv` / `mvr` habituels, sur plusieurs moteurs.
@@ -54,7 +55,7 @@ Préparation : choisir un axe sur lequel aller en **fin de course est sans dange
 - [ ] **Mouvement normal.** `mv(moteur, position)` habituel.
   *Attendu :* aucun changement visible ; le résultat contient la position finale réelle (`'position': ...`).
 - [ ] **Fin de course.** Sur l'axe choisi, `mv()` vers une position au-delà de la fin de course.
-  *Attendu :* `mv()` lève une `MotionError` qui indique le moteur, la consigne, la position atteinte et le caractère d'état de l'axe (`axis status`). **Noter ce caractère d'état** (signification à rapprocher du manuel PS90).
+  *Attendu :* `mv()` lève une `MotionError` qui indique le moteur, la consigne, la position atteinte et l'état de l'axe avec sa signification (ex. `axis status 'L' (disabled after approaching a hardware limit switch (MINSTOP/MAXSTOP))`). Après un arrêt sur fin de course (`L`), le manuel indique de faire `INIT` puis `EFREE<n>` pour dégager l'axe.
 - [ ] **Scan qui traverse la limite.** `ascan()` sur ce même axe, avec des points au-delà de la fin de course.
   *Attendu :* le scan s'arrête au premier point en erreur, affiche « Scan stopped at point i/N », et **ne ramène pas** le moteur à sa position initiale (message « NOT returned »).
 - [ ] **Délai maximal.** Dans `config/motors.yaml`, mettre temporairement `max_move_duration: 2` sur un moteur, redémarrer le serveur moteurs, puis lancer un mouvement qui dure plus de 2 s, **à faible vitesse**.
@@ -69,9 +70,7 @@ Remarques / résultats :
 
 ⚠️ **À faire à faible vitesse, en surveillant le banc, la main près de l'arrêt matériel.**
 
-- [ ] **Avant tout : vérifier dans le manuel OWIS PS90** (points `À VÉRIFIER` dans `servers/motion_server.py`) :
-  - la commande d'arrêt d'un axe (`PS90_STOP_AXIS_CMD`, supposée `STOP<n>`). **Si elle est fausse, aucun arrêt ne fonctionnera** : c'est à confirmer avant tous les autres tests de cette section ;
-  - s'il existe une commande d'arrêt général du contrôleur : la mettre dans `PS90_STOP_ALL_CMD` (aujourd'hui `None` : `stop_all()` arrête un à un les axes des moteurs déclarés dans `config/motors.yaml`, **pas les axes non déclarés**).
+- [ ] **Commande d'arrêt.** Le manuel du PS90+ confirme `STOP<n>` (décélération avec la rampe réglée, puis arrêt). À confirmer sur l'ancien PS90 par le premier test ci-dessous, avant les autres. `stop_all()` arrête un à un les axes des moteurs déclarés dans `config/motors.yaml` (**pas les axes non déclarés**) : la commande générale `MSTOP` n'est pas utilisée, car le format de son masque d'axes dépend du mode `TERM`.
 - [ ] **`stop(moteur)` depuis un autre shell.** Lancer un long mouvement depuis le PC A, puis `stop(moteur)` depuis le PC B.
   *Attendu :* le moteur s'arrête immédiatement. Le `mv` du PC A lève une `MotionError` « stopped by user » avec la position atteinte.
 - [ ] **`stop_all()`.** Lancer des mouvements longs sur deux moteurs (deux shells), puis `stop_all()` depuis un troisième shell.
@@ -91,7 +90,7 @@ Remarques / résultats :
 
 - [ ] **Déplacement à la main.** `free(m)`, déplacer l'axe à la main, puis `control(m)` et `mvr(m, petite_valeur)`.
   *Attendu :* le déplacement part bien de la nouvelle position (vérifier avec `wm(m)` avant et après : écart = `petite_valeur`).
-  ⚠️ `control()` envoie `INIT`, qui peut déplacer l'axe : faire `wm(m)` **après** `control(m)` pour avoir la vraie position de départ.
+  D'après le manuel, `INIT` (envoyé par `control()`) ne déplace pas l'axe ; faire quand même `wm(m)` **après** `control(m)` pour avoir la position de départ.
 - [ ] **Après un arrêt.** Lancer un long `mv`, l'arrêter avec `stop(m)` depuis un autre shell, puis `mvr(m, petite_valeur)`.
   *Attendu :* le déplacement part de la position où le moteur s'est arrêté.
 
@@ -132,7 +131,7 @@ Remarques / résultats :
 
 ## Tâche 8 : chargement de la config au démarrage
 
-**Nouveau fonctionnement :** les serveurs moteurs et FESTO chargent leur config tout seuls au démarrage. Les axes ne sont **plus initialisés automatiquement** : après chaque démarrage du serveur moteurs, taper `init_all()` dans le shell, **en surveillant le banc** (INIT peut déplacer les axes). Tant que ce n'est pas fait, les mouvements sont refusés (« not initialized »).
+**Nouveau fonctionnement :** les serveurs moteurs et FESTO chargent leur config tout seuls au démarrage. Les axes ne sont **plus initialisés automatiquement** : après chaque démarrage du serveur moteurs, taper `init_all()` dans le shell : il met les moteurs sous puissance (d'après le manuel, `INIT` ne déplace pas les axes ; à confirmer sur l'ancien PS90). Tant que ce n'est pas fait, les mouvements sont refusés (« not initialized »).
 
 - [ ] **Moteurs listés sans le shell.** Démarrer le serveur moteurs, puis ouvrir dans un navigateur `http://pc-moteurs:8001/motors/list`.
   *Attendu :* les 6 moteurs sont listés (état `off`), **sans** avoir lancé le shell, et sans qu'aucun axe n'ait bougé.
@@ -236,6 +235,15 @@ Remarques / résultats :
 - [ ] **FESTO simultanés.** Depuis deux shells sur deux PC, lancer en même temps une boucle `for i in range(20): toggle(festo_1)` (sur un actionneur sans danger).
   *Attendu :* aucune erreur NI-DAQmx « resource reserved ».
 - [ ] **Commandes non bloquées.** Après mise à jour, les `mv`, `on`, `init_all()` répondent normalement et apparaissent dans les logs avec leurs paramètres (vérifie le nouveau mécanisme de journalisation sur la version de Starlette installée sur le banc).
+
+Remarques / résultats :
+
+---
+
+## Points issus du manuel PS90+
+
+- [ ] **Profil de mouvement.** Les mouvements fonctionnent quel que soit le profil réglé dans le PS90 (trapézoïdal `T` ou S-curve `S`) : la fin de mouvement attend maintenant tous les états de mouvement du manuel (`T, S, V, P, F, W, X, Y, C, N`), et plus seulement `T`. Un `mv` normal doit se terminer sans « wrong final position ».
+- [ ] **`INIT` ne bouge pas.** Pendant `init_all()`, vérifier qu'aucun axe ne se déplace.
 
 Remarques / résultats :
 
