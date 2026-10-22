@@ -52,7 +52,7 @@ def test_reads_allowed_during_move_and_second_move_is_busy(setup):
     fake, ctrl, motors = setup
     client = TestClient(ms.app)
     result = {}
-    t = threading.Thread(target=lambda: result.update(r=client.get('/motors/move_abs/m1/500')))
+    t = threading.Thread(target=lambda: result.update(r=client.post('/motors/move_abs/m1', json={'position': 500})))
     t.start()
     # wait until the axis is actually moving
     while fake.status[0] != 'T':
@@ -63,10 +63,10 @@ def test_reads_allowed_during_move_and_second_move_is_busy(setup):
     assert r.status_code == 200 and r.json()['position'] == 222
 
     # a second move (absolute, relative) or an init on the same motor is refused
-    assert client.get('/motors/move_abs/m1/0').status_code == 409
-    r = client.get('/motors/move_rel/m1/10')
+    assert client.post('/motors/move_abs/m1', json={'position': 0}).status_code == 409
+    r = client.post('/motors/move_rel/m1', json={'delta': 10})
     assert r.status_code == 409 and 'busy' in r.json()['detail']
-    assert client.get('/motors/control/m1').status_code == 409
+    assert client.post('/motors/control/m1').status_code == 409
 
     t.join()
     assert result['r'].status_code == 200
@@ -75,7 +75,7 @@ def test_reads_allowed_during_move_and_second_move_is_busy(setup):
     assert 'PSET1=0' not in fake.commands
 
     # the lock is released after the move
-    assert client.get('/motors/move_rel/m1/10').status_code == 200
+    assert client.post('/motors/move_rel/m1', json={'delta': 10}).status_code == 200
     assert fake.positions[0] == 510
 
 

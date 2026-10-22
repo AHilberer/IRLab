@@ -34,17 +34,17 @@ def _wait_moving(fake, axis_index):
 
 def test_successful_move_returns_final_position(setup):
     fake, motors, client = setup
-    r = client.get('/motors/move_abs/m1/1234')
+    r = client.post('/motors/move_abs/m1', json={'position': 1234})
     assert r.status_code == 200
     assert r.json()['position'] == 1234
-    r = client.get('/motors/move_rel/m1/-34')
+    r = client.post('/motors/move_rel/m1', json={'delta': -34})
     assert r.status_code == 200 and r.json()['position'] == 1200
 
 
 def test_wrong_final_position_is_an_http_error(setup):
     fake, motors, client = setup
     fake.blocked[0] = (700, 'L')     # stops early, e.g. on a limit switch
-    r = client.get('/motors/move_abs/m1/1000')
+    r = client.post('/motors/move_abs/m1', json={'position': 1000})
     assert r.status_code == 500
     detail = r.json()['detail']
     for text in ('m1', 'wrong final position', 'target 1000', 'reached 700', "'L'"):
@@ -56,9 +56,9 @@ def test_position_tolerance(setup):
     fake, motors, client = setup
     motors['m1'].position_tolerance_steps = 2
     fake.blocked[0] = (998, 'R')
-    assert client.get('/motors/move_abs/m1/1000').json()['position'] == 998
+    assert client.post('/motors/move_abs/m1', json={'position': 1000}).json()['position'] == 998
     fake.blocked[0] = (997, 'R')
-    assert client.get('/motors/move_abs/m1/1000').status_code == 500
+    assert client.post('/motors/move_abs/m1', json={'position': 1000}).status_code == 500
 
 
 def test_max_move_duration_stops_the_axis(setup):
@@ -66,7 +66,7 @@ def test_max_move_duration_stops_the_axis(setup):
     fake.move_polls = 10**9
     motors['m1'].max_move_duration = 0.3
     t0 = time.monotonic()
-    r = client.get('/motors/move_abs/m1/1000')
+    r = client.post('/motors/move_abs/m1', json={'position': 1000})
     assert time.monotonic() - t0 < 2
     assert r.status_code == 500
     assert 'not finished after 0.3 s' in r.json()['detail']
@@ -78,7 +78,7 @@ def test_stop_interrupts_a_move(setup):
     fake, motors, client = setup
     fake.move_polls = 10**9
     result = {}
-    t = threading.Thread(target=lambda: result.update(r=client.get('/motors/move_abs/m1/1000')))
+    t = threading.Thread(target=lambda: result.update(r=client.post('/motors/move_abs/m1', json={'position': 1000})))
     t.start()
     _wait_moving(fake, 0)
     t0 = time.monotonic()
@@ -91,13 +91,14 @@ def test_stop_interrupts_a_move(setup):
     assert motors['m1'].state == ms.DeviceState.ON
     # the motor accepts new moves afterwards
     fake.move_polls = 2
-    assert client.get('/motors/move_abs/m1/10').status_code == 200
+    assert client.post('/motors/move_abs/m1', json={'position': 10}).status_code == 200
 
 
 def test_stop_all_stops_every_motor(setup):
     fake, motors, client = setup
     fake.move_polls = 10**9
-    threads = [threading.Thread(target=client.get, args=(f'/motors/move_abs/{n}/1000',))
+    threads = [threading.Thread(target=client.post, args=(f'/motors/move_abs/{n}',),
+                                kwargs={'json': {'position': 1000}})
                for n in ('m1', 'm2')]
     for t in threads:
         t.start()
@@ -120,8 +121,8 @@ def test_stop_endpoints_reject_get(setup):
 def test_relative_move_uses_freshly_read_position(setup):
     """Task 5: the axis moved without the server knowing (by hand after free())."""
     fake, motors, client = setup
-    assert client.get('/motors/move_abs/m1/100').json()['position'] == 100
+    assert client.post('/motors/move_abs/m1', json={'position': 100}).json()['position'] == 100
     fake.positions[0] = 5000          # moved by hand
-    r = client.get('/motors/move_rel/m1/10')
+    r = client.post('/motors/move_rel/m1', json={'delta': 10})
     assert r.status_code == 200 and r.json()['position'] == 5010
     assert 'PSET1=5010' in fake.commands

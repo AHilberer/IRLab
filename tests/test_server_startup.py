@@ -55,11 +55,11 @@ def test_config_loaded_at_startup_and_moves_need_init(motion):
         assert motors['sx']['state'] == 'off' and motors['sx']['max_move_duration'] == 300
         assert not any(c.startswith('INIT') for c in fake.commands)     # nothing moved
 
-        r = client.get('/motors/move_abs/sx/100')
+        r = client.post('/motors/move_abs/sx', json={'position': 100})
         assert r.status_code == 500 and 'not initialized' in r.json()['detail']
 
-        assert client.get('/motors/init/sx').status_code == 200
-        assert client.get('/motors/move_abs/sx/100').json()['position'] == 100
+        assert client.post('/motors/init/sx').status_code == 200
+        assert client.post('/motors/move_abs/sx', json={'position': 100}).json()['position'] == 100
 
         st = client.get('/status').json()
         assert st['server'] == 'motion_server' and st['status'] == 'ok'
@@ -105,7 +105,7 @@ def test_shutdown_stops_moving_axes(motion):
     fake, state, configure = motion
     configure()
     with TestClient(ms.app) as client:
-        client.get('/motors/init/sx')
+        client.post('/motors/init/sx')
         ms.motors['sx'].state = ms.DeviceState.MOVING     # as during a move
     assert 'STOP2' in fake.commands
 

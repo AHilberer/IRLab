@@ -9,6 +9,7 @@ import clients.motion_client as mc
 import common.http_client as hc
 import servers.festo_server as fs
 import servers.motion_server as ms
+import servers.spectro_server as ss
 from tests.fake_serial import FakePS90Serial
 from tests.test_server_startup import motion, FESTO_YAML   # noqa: F401  (fixture)
 
@@ -47,7 +48,7 @@ def test_close_controller_then_reload_recreates_motors(motion):
     configure()
     with TestClient(ms.app) as client:
         old_ctrl = ms.controllers['main_ps90']
-        assert client.get('/ps90/close?name=main_ps90').json()['status'] == 'closed'
+        assert client.post('/ps90/close?name=main_ps90').json()['status'] == 'closed'
         assert client.get('/motors/list').json()['motors'] == []
         r = client.post('/admin/reload_config')
         assert sorted(r.json()['created']) == ['sx', 'sy']
@@ -69,3 +70,29 @@ def test_load_actuators_from_server(monkeypatch, tmp_path):
         actuators = fc.load_actuators_from_server()
     a = actuators['festo_1']
     assert (a.controller_name, a.module, a.lines) == ('main_festo', 'Mod1', 'line0:1')
+
+
+def test_actions_refuse_get(motion):
+    """Task 11: a GET (browser prefetch, link crawler...) never changes the bench state."""
+    fake, state, configure = motion
+    configure()
+    with TestClient(ms.app) as client:
+        client.post('/motors/init/sx')
+        for path in ('/motors/move_abs/sx', '/motors/move_rel/sx', '/motors/init/sx', '/motors/free/sx',
+                     '/motors/control/sx', '/ps90/connect', '/ps90/close'):
+            assert client.get(path).status_code == 405, path
+        # the old URL form does not match any route either
+        assert client.get('/motors/move_abs/sx/100').status_code == 404
+        assert not any(c.startswith('PSET') for c in fake.commands)
+        # body validation
+        assert client.post('/motors/move_abs/sx', json={'position': 'abc'}).status_code == 422
+        assert client.post('/motors/move_abs/sx', json={'position': 42}).json()['position'] == 42
+
+
+def test_festo_and_spectro_actions_refuse_get():
+    for app, paths in ((fs.app, ('/festo/connect', '/festo/close', '/festo/actuators/on/a',
+                                 '/festo/actuators/off/a', '/festo/actuators/toggle/a')),
+                       (ss.app, ('/spectro/connect', '/spectro/close', '/spectro/load_config', '/acquire'))):
+        client = TestClient(app)
+        for path in paths:
+            assert client.get(path).status_code == 405, path

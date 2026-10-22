@@ -162,7 +162,7 @@ Le shell ne lit plus `config/motors.yaml` / `config/festo.yaml` : il crée ses o
   *Attendu :* les mêmes moteurs (`faty`, `focdy`, `focuy`, `sx`, `sy`, `sz`) et actionneurs (`festo_1` à `festo_10`) sont créés ; chaque ligne moteur affiche aussi son unité. `mv`, `wm`, `on`, `off` fonctionnent comme avant.
 - [ ] **`/motors/list`.** Dans un navigateur, `http://pc-moteurs:8001/motors/list`.
   *Attendu :* chaque moteur a `unit` et `state` en plus des champs habituels.
-- [ ] **Reconnexion du PS90 sans redémarrer le serveur** (remplace « `/ps90/close` puis reconnexion » de la tâche 2). Sur `http://pc-moteurs:8001/docs` : `GET /ps90/close` (name = `main_ps90`), puis `POST /admin/reload_config`, puis `init_all()` dans le shell.
+- [ ] **Reconnexion du PS90 sans redémarrer le serveur** (remplace « `/ps90/close` puis reconnexion » de la tâche 2). Sur `http://pc-moteurs:8001/docs` : `POST /ps90/close` (name = `main_ps90`), puis `POST /admin/reload_config`, puis `init_all()` dans le shell.
   *Attendu :* les moteurs disparaissent après le `close`, réapparaissent après le `reload_config`, et fonctionnent après `init_all()`. Relancer le shell (ou `reconnect()`, tâche 10) pour retrouver les objets à jour.
 
 Remarques / résultats :
@@ -177,6 +177,22 @@ Remarques / résultats :
   *Attendu :* les moteurs apparaissent (`sx`, `sy`...), le récapitulatif indique `Motion server OK` et `6 motor(s)`. Après `init_all()`, `mv` fonctionne.
 - [ ] **Aucun serveur.** Lancer le shell sans aucun serveur démarré.
   *Attendu :* le shell démarre quand même (0 moteur, 0 actionneur) en environ 2 s par serveur absent, sans exception.
+
+Remarques / résultats :
+
+---
+
+## Tâche 11 : actions en POST plutôt qu'en GET
+
+⚠️ **Mettre à jour le code sur tous les PC en même temps** (serveurs et shells) : un ancien shell ne peut plus piloter un nouveau serveur (et inversement).
+
+- [ ] **Shell inchangé.** `init_all()`, `mv`, `mvr`, `wm`, `free`, `control`, `stop`, `ascan`, `tweak`, `on`, `off`, `toggle`, `state`, `spec.acquire(...)`.
+  *Attendu :* tout fonctionne comme avant.
+- [ ] **Navigateur sans effet.** Ouvrir `http://pc-moteurs:8001/motors/move_abs/sx` dans un navigateur.
+  *Attendu :* erreur 405 « Method Not Allowed », aucun mouvement. (L'ancienne forme `.../motors/move_abs/sx/100` renvoie 404, sans mouvement non plus.) Idem pour `http://pc-moteurs:8003/festo/actuators/on/festo_1` : 405, l'actionneur ne bouge pas.
+- [ ] **`/docs`.** Sur `http://pc-moteurs:8001/docs`, `POST /motors/move_rel/{motor}` → « Try it out », motor = `sx`, corps `{"delta": 100}` → « Execute ».
+  *Attendu :* le moteur se déplace de 100 pas ; la réponse contient la position finale.
+- [ ] **Scripts personnels.** Si des scripts appellent directement les URL des serveurs (`requests.get(.../move_abs/...)`), les adapter (voir la liste des endpoints dans le README).
 
 Remarques / résultats :
 

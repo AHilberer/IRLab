@@ -28,15 +28,19 @@ def bench(monkeypatch):
         parts = urlsplit(url)
         path = parts.path + (f'?{parts.query}' if parts.query else '')
         requests_seen.append((method, parts.path))
-        if bench_hooks.get('before'):
-            bench_hooks['before'](method, parts.path)
+        if parts.path.startswith('/motors/move_abs'):
+            moves.append(kwargs['json']['position'])
+        if 'before' in bench_hooks:
+            bench_hooks['before'](method, parts.path, kwargs.get('json'))
         resp = tc.request(method, path, **kwargs)
         resp.ok = resp.is_success
         return resp
 
     bench_hooks = {}
+    moves = []          # targets of the absolute moves sent, in steps
     monkeypatch.setattr(hc.requests, 'request', fake_request)
     motor = mc.Motor('m1', controler_channel=1, step_to_mm=1.0)
+    bench_hooks['moves'] = moves
     return fake, motor, requests_seen, bench_hooks
 
 
@@ -75,7 +79,7 @@ def test_busy_motor_raises_motor_busy_error(bench):
 def test_ctrl_c_during_mv_sends_stop(bench):
     fake, motor, seen, hooks = bench
 
-    def interrupt(method, path):
+    def interrupt(method, path, body):
         if path.startswith('/motors/move_abs'):
             raise KeyboardInterrupt
     hooks['before'] = interrupt
@@ -89,11 +93,10 @@ def test_ascan_stops_at_first_error_without_returning(bench, capsys):
     fake, motor, seen, hooks = bench
     fake.positions[0] = 5
     # 3rd point fails
-    hooks['before'] = lambda method, path: fake.blocked.update({0: (25, 'L')}) if path.endswith('/30') else None
+    hooks['before'] = lambda method, path, body: fake.blocked.update({0: (25, 'L')}) if body == {'position': 30} else None
     with pytest.raises(MotionError):
         bs.ascan(motor, 10, 50, 5)
-    moves = [p for m, p in seen if p.startswith('/motors/move_abs')]
-    assert moves == ['/motors/move_abs/m1/10', '/motors/move_abs/m1/20', '/motors/move_abs/m1/30']
+    assert hooks['moves'] == [10, 20, 30]
     out = capsys.readouterr().out
     assert 'point 3/5' in out and 'NOT returned' in out
 
@@ -102,8 +105,7 @@ def test_ascan_returns_to_start_on_success(bench):
     fake, motor, seen, hooks = bench
     fake.positions[0] = 5
     bs.ascan(motor, 10, 30, 3)
-    moves = [p for m, p in seen if p.startswith('/motors/move_abs')]
-    assert moves[-1] == '/motors/move_abs/m1/5'
+    assert hooks['moves'] == [10, 20, 30, 5]
 
 
 def test_stop_all_client(bench):

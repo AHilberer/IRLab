@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import os
 import threading
 
@@ -196,7 +197,7 @@ def get_spectrometer(name: str = None) -> Spectrometer:
         return spectrometers[name]
 
 
-@app.get('/spectro/connect')
+@app.post('/spectro/connect')
 def spectro_connect(name: str = 'main', camera_index: int = 0, spectrograph_index: int = None):
     """Connect a camera (and optional spectrograph) and register it under `name`.
 
@@ -218,7 +219,7 @@ def spectro_connect(name: str = 'main', camera_index: int = 0, spectrograph_inde
     return {'status': 'connected', 'name': name, 'camera_index': camera_index, 'spectrograph_index': spectrograph_index}
 
 
-@app.get('/spectro/close')
+@app.post('/spectro/close')
 def spectro_close(name: str = None):
     """Close a named spectrometer (or the default). Use this together with
     /spectro/connect to recover a wedged connection without restarting the server."""
@@ -265,7 +266,7 @@ def _load_spectro_config_from_dict(cfg: dict):
     return created
 
 
-@app.get('/spectro/load_config')
+@app.post('/spectro/load_config')
 def spectro_load_config(path: str = None):
     """Load spectrometer definitions from config/spectro.yaml and connect them."""
     if yaml is None:
@@ -293,8 +294,15 @@ def spectro_list():
         return {'spectrometers': [{'name': n, 'state': s.state.value} for n, s in spectrometers.items()]}
 
 
-@app.get("/acquire")
-def acquire(exposure: float = 0.1, name: str = None):
+class AcquireRequest(BaseModel):
+    exposure: float = 0.1    # s
+    name: str = None         # spectrometer name; None = default one
+
+
+@app.post("/acquire")
+def acquire(req: AcquireRequest):
+    """Acquire a spectrum (body: {"exposure": s, "name": optional spectrometer name})."""
+    exposure, name = req.exposure, req.name
     try:
         spec = get_spectrometer(name)
     except Exception as e:

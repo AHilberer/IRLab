@@ -9,7 +9,7 @@ from clients.motion_client import load_motors_from_server, mv, wm, mvr, free, co
 from common.errors import MotionError, ServerError
 from clients.spectro_client import Spectrometer
 from clients.festo_client import load_actuators_from_server, PneumaticActuator, on, off, toggle, state
-from common.http_client import safe_get, DEFAULT_TIMEOUT
+from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 from scripts.base_scripts import ascan, dscan, tweak
 
@@ -138,7 +138,7 @@ def _connect_spectro():
     if _server_status("Spectro", SPECTRO_URL) is None:
         return False
     try:
-        safe_get(f"{SPECTRO_URL}/spectro/load_config", timeout=5)
+        safe_post(f"{SPECTRO_URL}/spectro/load_config", timeout=5)
     except Exception as e:
         print(f"  [WARN] Failed to load/connect spectrometer from config: {e}")
     return True

@@ -80,44 +80,45 @@ in `config/servers.yaml` with the real names of the bench PCs.
 	- `IRLAB_MOTORS_CONFIG`: motor config file loaded by the motion server (default: `config/motors.yaml`)
 	- `IRLAB_FESTO_CONFIG`: config file loaded by the FESTO server (default: `config/festo.yaml`)
 
-## Main Motion Endpoints
+## Main Endpoints
+
+Actions that change the state of the bench use `POST` (a browser, a page refresh or a
+link crawler cannot trigger them); reads use `GET`. All endpoints can be tried from
+each server's `/docs` page.
+
+### Motion server (port 8001)
 
 - `GET /status` (JSON: version, config, controllers and their errors, motors)
-- `POST /admin/reload_config`
-- `GET /ps90/connect`
-- `GET /ps90/close`
+- `GET /state`
 - `GET /motors/list` (name, axis, controller, step_to_mm, unit, max_move_duration, state)
-- `GET /motors/init/{motor}`
 - `GET /motors/read/{motor}`
-- `GET /motors/move_abs/{motor}/{position}`
-- `GET /motors/move_rel/{motor}/{delta}`
-- `POST /motors/stop/{motor}`
-- `POST /motors/stop_all`
-- `GET /motors/free/{motor}`
-- `GET /motors/control/{motor}`
+- `GET /controllers/list`, `GET /ps90/status`
+- `POST /motors/move_abs/{motor}` body `{"position": <steps>}`
+- `POST /motors/move_rel/{motor}` body `{"delta": <steps>}`
+- `POST /motors/stop/{motor}`, `POST /motors/stop_all`
+- `POST /motors/init/{motor}`
+- `POST /motors/free/{motor}`, `POST /motors/control/{motor}`
+- `POST /admin/reload_config`
+- `POST /ps90/connect`, `POST /ps90/close` (debug / recovery)
 
-## Main Spectrometer Endpoints
+### Spectrometer server (port 8002)
 
-- `GET /spectro/connect`
-- `GET /spectro/close`
-- `GET /spectro/load_config`
-- `GET /spectro/list`
-- `GET /acquire?exposure=0.1`
 - `GET /status` (JSON: version, spectrometers and their state)
 - `GET /state`
+- `GET /spectro/list`
+- `POST /acquire` body `{"exposure": <s>, "name": <optional spectrometer name>}`
+- `POST /spectro/load_config`
+- `POST /spectro/connect`, `POST /spectro/close`
 
-## Main FESTO Endpoints
+### FESTO server (port 8003)
 
 - `GET /status` (JSON: version, config, controllers and their errors, actuators)
-- `POST /admin/reload_config`
-- `GET /festo/connect`
-- `GET /festo/close`
-- `GET /festo/controllers/list`
-- `GET /festo/actuators/list`
-- `GET /festo/actuators/on/{actuator}`
-- `GET /festo/actuators/off/{actuator}`
-- `GET /festo/actuators/toggle/{actuator}`
+- `GET /state`
+- `GET /festo/actuators/list`, `GET /festo/controllers/list`
 - `GET /festo/actuators/state/{actuator}`
+- `POST /festo/actuators/on/{actuator}`, `POST /festo/actuators/off/{actuator}`, `POST /festo/actuators/toggle/{actuator}`
+- `POST /admin/reload_config`
+- `POST /festo/connect`, `POST /festo/close` (debug / recovery)
 
 ## Shell Helpers
 

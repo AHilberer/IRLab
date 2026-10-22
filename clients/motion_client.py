@@ -120,7 +120,8 @@ def mv(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, raise
             steps = int(pos)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_abs/{motor.name}/{int(steps)}", timeout=_move_timeout(motor, timeout))
+            r = safe_post(f"{BASE_URL}/motors/move_abs/{motor.name}", json={'position': int(steps)},
+                          timeout=_move_timeout(motor, timeout))
             results.append((motor.name, r.json()))
         except KeyboardInterrupt:
             _stop_on_interrupt(motors)
@@ -179,7 +180,8 @@ def mvr(*args, show_positions: bool = True, timeout=DEFAULT_MOTION_TIMEOUT, rais
             steps = int(delta)
 
         try:
-            r = safe_get(f"{BASE_URL}/motors/move_rel/{motor.name}/{int(steps)}", timeout=_move_timeout(motor, timeout))
+            r = safe_post(f"{BASE_URL}/motors/move_rel/{motor.name}", json={'delta': int(steps)},
+                          timeout=_move_timeout(motor, timeout))
             results.append((motor.name, r.json()))
         except KeyboardInterrupt:
             _stop_on_interrupt(motors)
@@ -218,7 +220,7 @@ def free(*motors):
         if not isinstance(motor, Motor):
             raise ValueError("Arguments must be Motor instances")
         try:
-            r = safe_get(f"{BASE_URL}/motors/free/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            r = safe_post(f"{BASE_URL}/motors/free/{motor.name}", timeout=DEFAULT_TIMEOUT)
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
@@ -232,7 +234,7 @@ def control(*motors):
         if not isinstance(motor, Motor):
             raise ValueError("Arguments must be Motor instances")
         try:
-            r = safe_get(f"{BASE_URL}/motors/control/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            r = safe_post(f"{BASE_URL}/motors/control/{motor.name}", timeout=DEFAULT_TIMEOUT)
             results.append((motor.name, r.json()))
         except Exception as e:
             results.append((motor.name, {'error': str(e)}))
@@ -277,7 +279,7 @@ def init(*motors):
         if not isinstance(motor, Motor):
             raise ValueError("Arguments must be Motor instances")
         try:
-            r = safe_get(f"{BASE_URL}/motors/init/{motor.name}", timeout=DEFAULT_TIMEOUT)
+            r = safe_post(f"{BASE_URL}/motors/init/{motor.name}", timeout=DEFAULT_TIMEOUT)
             results.append((motor.name, r.json()))
         except Exception as e:
             print(f"[WARN] Failed to initialize motor {motor.name}: {e}")
@@ -308,7 +310,7 @@ def free_all_motors():
     results = []
     for motor_name in motor_names:
         try:
-            resp = safe_get(f"{BASE_URL}/motors/free/{motor_name}", timeout=DEFAULT_TIMEOUT)
+            resp = safe_post(f"{BASE_URL}/motors/free/{motor_name}", timeout=DEFAULT_TIMEOUT)
             results.append((motor_name, resp.json()))
         except Exception as e:
             results.append((motor_name, {'error': str(e)}))
@@ -328,7 +330,7 @@ def control_all_motors():
     results = []
     for motor_name in motor_names:
         try:
-            resp = safe_get(f"{BASE_URL}/motors/control/{motor_name}", timeout=DEFAULT_TIMEOUT)
+            resp = safe_post(f"{BASE_URL}/motors/control/{motor_name}", timeout=DEFAULT_TIMEOUT)
             results.append((motor_name, resp.json()))
         except Exception as e:
             results.append((motor_name, {'error': str(e)}))

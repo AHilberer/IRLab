@@ -245,7 +245,7 @@ def _load_config_from_dict(cfg: dict):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get('/festo/connect')
+@app.post('/festo/connect')
 def festo_connect(name: str = 'festo', chassis: str = None):
     """Instantiate a NI-DAQ controller for the given chassis (default: cDAQ1).
 
@@ -270,7 +270,7 @@ def festo_connect(name: str = 'festo', chassis: str = None):
     return {'status': 'connected', 'name': name, 'chassis': chassis}
 
 
-@app.get('/festo/close')
+@app.post('/festo/close')
 def festo_close(name: str = None):
     global default_controller_name
 
@@ -350,7 +350,7 @@ def festo_list_controllers():
     return {'controllers': out}
 
 
-@app.get('/festo/actuators/on/{actuator_name}')
+@app.post('/festo/actuators/on/{actuator_name}')
 def festo_set_on(actuator_name: str):
     a = get_actuator(actuator_name)
     try:
@@ -360,7 +360,7 @@ def festo_set_on(actuator_name: str):
     return {'actuator': actuator_name, 'state': 'on', 'device_state': a.state.value}
 
 
-@app.get('/festo/actuators/off/{actuator_name}')
+@app.post('/festo/actuators/off/{actuator_name}')
 def festo_set_off(actuator_name: str):
     a = get_actuator(actuator_name)
     try:
@@ -370,7 +370,7 @@ def festo_set_off(actuator_name: str):
     return {'actuator': actuator_name, 'state': 'off', 'device_state': a.state.value}
 
 
-@app.get('/festo/actuators/toggle/{actuator_name}')
+@app.post('/festo/actuators/toggle/{actuator_name}')
 def festo_toggle(actuator_name: str):
     a = get_actuator(actuator_name)
     try:

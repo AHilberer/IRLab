@@ -1,4 +1,4 @@
-from common.http_client import safe_get, DEFAULT_TIMEOUT
+from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
 
 BASE_URL = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
@@ -22,15 +22,15 @@ class PneumaticActuator:
         self.lines = lines
 
     def on(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/on/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/on/{self.name}", timeout=timeout)
         return r.json()
 
     def off(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/off/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/off/{self.name}", timeout=timeout)
         return r.json()
 
     def toggle(self, timeout=DEFAULT_TIMEOUT):
-        r = safe_get(f"{BASE_URL}/festo/actuators/toggle/{self.name}", timeout=timeout)
+        r = safe_post(f"{BASE_URL}/festo/actuators/toggle/{self.name}", timeout=timeout)
         return r.json()
 
     def state(self, timeout=DEFAULT_TIMEOUT):
@@ -74,7 +74,7 @@ def on(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/on/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/on/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))
@@ -87,7 +87,7 @@ def off(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/off/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/off/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))
@@ -100,7 +100,7 @@ def toggle(*actuators, timeout=DEFAULT_TIMEOUT):
     for actuator in actuators:
         name = _as_name(actuator)
         try:
-            r = safe_get(f"{BASE_URL}/festo/actuators/toggle/{name}", timeout=timeout)
+            r = safe_post(f"{BASE_URL}/festo/actuators/toggle/{name}", timeout=timeout)
             results.append((name, r.json()))
         except Exception as e:
             results.append((name, {'error': str(e)}))

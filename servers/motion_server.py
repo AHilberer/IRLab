@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 import time
 import os
 import threading
@@ -63,6 +64,14 @@ PS90_STOP_AXIS_CMD = 'STOP{axis}'
 # per-axis stops. None: not used, only the per-axis stop of each registered motor
 # is sent. À VÉRIFIER dans le manuel OWIS PS90 (general stop command).
 PS90_STOP_ALL_CMD = None
+
+class MoveAbsRequest(BaseModel):
+    position: int    # target position, in steps
+
+
+class MoveRelRequest(BaseModel):
+    delta: int       # displacement, in steps
+
 
 # Per-motor defaults, overridable in config/motors.yaml
 DEFAULT_MAX_MOVE_DURATION = 120.0     # s; beyond this the axis is stopped and the move fails
@@ -324,7 +333,7 @@ def get_controller(name: str = None):
     return controllers[name]
 
 
-@app.get("/ps90/connect")
+@app.post("/ps90/connect")
 def ps90_connect(port: str = None, baud: int = 9600, name: str = 'ps90'):
     """Connect to a PS90 controller and store it under `name`.
     Example: /ps90/connect?name=main&port=/dev/ttyUSB0&baud=9600
@@ -346,7 +355,7 @@ def ps90_connect(port: str = None, baud: int = 9600, name: str = 'ps90'):
     return {"status": "connected", "name": name, "port": port, "baud": baud}
 
 
-@app.get("/ps90/close")
+@app.post("/ps90/close")
 def ps90_close(name: str = None):
     """Close a named controller or the default when `name` is omitted.
 
@@ -552,12 +561,13 @@ def admin_reload_config():
     return {"created": created, **status()}
 
 
-@app.get("/motors/move_abs/{motor}/{position}")
-def motors_move_abs(motor: str, position: int):
-    """Generic endpoint to move a registered motor by name (controller-agnostic)."""
+@app.post("/motors/move_abs/{motor}")
+def motors_move_abs(motor: str, req: MoveAbsRequest):
+    """Move a registered motor to an absolute position (body: {"position": steps}).
+    Returns when the move is finished, with the final position."""
     m = get_motor(motor)
     try:
-        res = m.move_absolute(position)
+        res = m.move_absolute(req.position)
     except MotorBusyError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
@@ -565,11 +575,12 @@ def motors_move_abs(motor: str, position: int):
     return {"result": "ok", "motor": motor, "position": res}
 
 
-@app.get("/motors/move_rel/{motor}/{delta}")
-def motors_move_rel(motor: str, delta: int):
+@app.post("/motors/move_rel/{motor}")
+def motors_move_rel(motor: str, req: MoveRelRequest):
+    """Move a registered motor relative to its current position (body: {"delta": steps})."""
     m = get_motor(motor)
     try:
-        res = m.move_relative(delta)
+        res = m.move_relative(req.delta)
     except MotorBusyError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
@@ -620,7 +631,7 @@ def motors_read(motor: str):
     return {"motor": motor, "position": pos, "state": m.state.value}
 
 
-@app.get("/motors/init/{motor}")
+@app.post("/motors/init/{motor}")
 def motors_init(motor: str):
     m = get_motor(motor)
     try:
@@ -632,7 +643,7 @@ def motors_init(motor: str):
     return {"status": "initialized", "motor": motor}
 
 
-@app.get("/motors/free/{motor}")
+@app.post("/motors/free/{motor}")
 def motors_free(motor: str):
     """Release control on a registered motor axis."""
     m = get_motor(motor)
@@ -643,7 +654,7 @@ def motors_free(motor: str):
     return {"status": "freed", "motor": motor}
 
 
-@app.get("/motors/control/{motor}")
+@app.post("/motors/control/{motor}")
 def motors_control(motor: str):
     """Re-acquire control on a registered motor axis."""
     m = get_motor(motor)
