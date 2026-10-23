@@ -39,6 +39,11 @@ def get_server_url(key: str, env_var: str = None, default: str = None) -> str:
     return default
 
 
+def is_server_disabled(key: str) -> bool:
+    """True if `key` (e.g. 'spectro_server') is listed in `disabled_servers` of
+    config/servers.yaml: the shell and the clients do not try to reach it."""
+    return key in (load_servers_config().get('disabled_servers') or [])
+
 
 def get_server_port(key: str, env_var: str = None, default: int = None) -> int:
     """Return the port of a server, taken from its URL (see `get_server_url`).

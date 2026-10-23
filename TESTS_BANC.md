@@ -6,6 +6,11 @@ en cas de problème, on peut revenir en arrière tâche par tâche.
 
 Cocher chaque test une fois validé, et noter le résultat en cas d'échec.
 
+> **Spectromètre reporté.** Pour cette campagne (v1.0), le serveur spectro est désactivé
+> (`disabled_servers` dans `config/servers.yaml`) : le shell ne le contacte pas et l'affiche
+> `DISABLED`. Les tests marqués *(reporté : spectro désactivé)* seront faits plus tard,
+> après l'avoir retiré de cette liste.
+
 ---
 
 ## Tâche 1 : verrou d'accès au port série (commit `e689b71`)
@@ -107,8 +112,8 @@ Préparation (une seule fois) :
 
 Tests :
 - [ ] **Plus d'IP en dur.** `grep -rn "192.168" .` (ou `Select-String -Path * -Pattern "192.168" -Recurse` sous PowerShell) : seules restent les lignes d'exemple commentées de `config/servers.yaml` (et `IRLab_modifications.md`).
-- [ ] **Démarrage des serveurs.** Lancer `.\start_motion.ps1`, `.\start_spectro.ps1`, `.\start_festo.ps1` sur leurs PC respectifs.
-  *Attendu :* chaque script affiche le bon port (8001 / 8002 / 8003) et uvicorn écoute sur `0.0.0.0`.
+- [ ] **Démarrage des serveurs.** Lancer `.\start_motion.ps1` et `.\start_festo.ps1` sur `pc-moteurs` (pas `start_spectro.ps1`, spectro désactivé).
+  *Attendu :* chaque script affiche le bon port (8001 / 8003) et uvicorn écoute sur `0.0.0.0`.
 - [ ] **Shell depuis n'importe quel PC.** Lancer `python IRLab_shell.py` depuis au moins deux PC différents du banc (dont un qui ne fait tourner aucun serveur).
   *Attendu :* les trois serveurs sont joignables (« ... server running »).
 - [ ] **Pare-feu** (si un serveur n'est pas joignable depuis un autre PC alors qu'il l'est en local) : les ports 8001 à 8003 doivent être ouverts en entrée sur les PC serveurs (traité en détail à la tâche 17).
@@ -119,7 +124,7 @@ Remarques / résultats :
 
 ## Tâche 7 : timeouts côté client adaptés
 
-- [ ] **Longue exposition.** `spec.acquire(exposure=8)`.
+- [ ] **Longue exposition.** *(reporté : spectro désactivé)* `spec.acquire(exposure=8)`.
   *Attendu :* le spectre est renvoyé, sans timeout (avant : échec systématique au-delà de 5 s).
 - [ ] **Long déplacement.** Un déplacement de plus d'une minute (grande course et/ou vitesse réduite).
   *Attendu :* `mv()` aboutit sans timeout côté client (avant : abandon à 60 s pendant que le moteur bougeait encore).
@@ -135,10 +140,10 @@ Remarques / résultats :
 
 - [ ] **Moteurs listés sans le shell.** Démarrer le serveur moteurs, puis ouvrir dans un navigateur `http://pc-moteurs:8001/motors/list`.
   *Attendu :* les 6 moteurs sont listés (état `off`), **sans** avoir lancé le shell, et sans qu'aucun axe n'ait bougé.
-- [ ] **`/status`.** Ouvrir `http://pc-moteurs:8001/status`, `http://pc-moteurs:8003/status`, `http://pc-spectro:8002/status`.
+- [ ] **`/status`.** Ouvrir `http://pc-moteurs:8001/status`, `http://pc-moteurs:8003/status` (spectro : reporté).
   *Attendu :* JSON avec le nom du serveur, la version (`"version": "1.0"`), `"status": "ok"` et les contrôleurs `connected`.
-- [ ] **Version affichée.** Lancer chaque serveur, puis le shell.
-  *Attendu :* la console de chaque serveur affiche `<serveur> v1.0` au démarrage (aussi écrit dans `logs/`), le shell affiche `IRLab shell v1.0` sous la bannière, et chaque serveur est listé avec `(v1.0)`, sans avertissement de version différente.
+- [ ] **Version affichée.** Lancer les serveurs moteurs et FESTO, puis le shell.
+  *Attendu :* la console de chaque serveur affiche `<serveur> v1.0` au démarrage (aussi écrit dans `logs/`), le shell affiche `IRLab shell v1.0` sous la bannière, et chaque serveur joignable est listé avec `(v1.0)`, sans avertissement de version différente.
 - [ ] **Shell et `init_all()`.** Lancer le shell.
   *Attendu :* message « Not initialized yet: ... Run init_all() ». Un `mv` est refusé (« not initialized »). Après `init_all()` (en surveillant le banc), les `mv` fonctionnent.
 - [ ] **Pas d'INIT à l'ouverture d'un shell.** Une fois les moteurs initialisés, ouvrir un second shell sur un autre PC.
@@ -172,8 +177,8 @@ Remarques / résultats :
 
 ## Tâche 10 : shell tolérant à un serveur absent
 
-- [ ] **Seul le serveur FESTO démarré.** Arrêter les serveurs moteurs et spectro, lancer le shell.
-  *Attendu :* avertissements « Motion server NOT reachable », « Spectro server NOT reachable », mais le shell démarre ; le récapitulatif indique `FESTO server OK`, `0 motor(s), 10 actuator(s)`. `on(festo_1)` / `off(festo_1)` fonctionnent.
+- [ ] **Seul le serveur FESTO démarré.** Arrêter le serveur moteurs, lancer le shell.
+  *Attendu :* avertissement « Motion server NOT reachable » (spectro affiché `DISABLED`, sans avertissement), mais le shell démarre ; le récapitulatif indique `FESTO server OK`, `0 motor(s), 10 actuator(s)`. `on(festo_1)` / `off(festo_1)` fonctionnent.
 - [ ] **`reconnect()`.** Démarrer ensuite le serveur moteurs, puis `reconnect()` dans le même shell.
   *Attendu :* les moteurs apparaissent (`sx`, `sy`...), le récapitulatif indique `Motion server OK` et `6 motor(s)`. Après `init_all()`, `mv` fonctionne.
 - [ ] **Aucun serveur.** Lancer le shell sans aucun serveur démarré.
@@ -187,7 +192,7 @@ Remarques / résultats :
 
 ⚠️ **Mettre à jour le code sur tous les PC en même temps** (serveurs et shells) : un ancien shell ne peut plus piloter un nouveau serveur (et inversement).
 
-- [ ] **Shell inchangé.** `init_all()`, `mv`, `mvr`, `wm`, `free`, `control`, `stop`, `ascan`, `tweak`, `on`, `off`, `toggle`, `state`, `spec.acquire(...)`.
+- [ ] **Shell inchangé.** `init_all()`, `mv`, `mvr`, `wm`, `free`, `control`, `stop`, `ascan`, `tweak`, `on`, `off`, `toggle`, `state` (`spec.acquire(...)` : reporté).
   *Attendu :* tout fonctionne comme avant.
 - [ ] **Navigateur sans effet.** Ouvrir `http://pc-moteurs:8001/motors/move_abs/sx` dans un navigateur.
   *Attendu :* erreur 405 « Method Not Allowed », aucun mouvement. (L'ancienne forme `.../motors/move_abs/sx/100` renvoie 404, sans mouvement non plus.) Idem pour `http://pc-moteurs:8003/festo/actuators/on/festo_1` : 405, l'actionneur ne bouge pas.
@@ -205,7 +210,8 @@ Remarques / résultats :
   *Attendu :* deux lignes `POST /motors/move_abs/sx {"position": ...} from <IP du PC>` : `started`, puis `HTTP 200 in ... s -> {... 'position': ...}`.
 - [ ] **Trace d'une erreur.** Provoquer une erreur (ex. `mv` d'un moteur avant `init_all()`).
   *Attendu :* ligne `ERROR` avec le message d'erreur.
-- [ ] **FESTO et spectro.** Un `on(festo_1)` et un `spec.acquire(...)` apparaissent dans `logs\festo_server.log` et `logs\spectro_server.log` (sur leurs PC respectifs).
+- [ ] **FESTO.** Un `on(festo_1)` apparaît dans `logs\festo_server.log`.
+- [ ] **Spectro.** *(reporté : spectro désactivé)* Un `spec.acquire(...)` apparaît dans `logs\spectro_server.log` sur `pc-spectro`.
 - [ ] **Log série (diagnostic).** Mettre `log_serial: true` dans `config/motors.yaml`, redémarrer le serveur moteurs, faire un `wm(sx)`.
   *Attendu :* lignes `COM25 >> ?CNT2` et `COM25 << b'...'` dans le log, **ce qui montre aussi le caractère de fin de réponse réel du PS90** (à comparer avec `PS90_TERMINATOR`, tâche 2). Remettre `log_serial: false` ensuite.
 - [ ] **Rotation.** Le lendemain, vérifier qu'un fichier `motion_server.log.AAAA-MM-JJ` a été créé.
@@ -233,7 +239,7 @@ Remarques / résultats :
 
 ## Corrections après la revue globale
 
-- [ ] **Acquisition.** `spec.acquire(exposure=0.1)` renvoie bien un spectre (avant : erreur 500 probable si le SDK Andor renvoie des tableaux numpy).
+- [ ] **Acquisition.** *(reporté : spectro désactivé)* `spec.acquire(exposure=0.1)` renvoie bien un spectre (avant : erreur 500 probable si le SDK Andor renvoie des tableaux numpy).
 - [ ] **FESTO simultanés.** Depuis deux shells sur deux PC, lancer en même temps une boucle `for i in range(20): toggle(festo_1)` (sur un actionneur sans danger).
   *Attendu :* aucune erreur NI-DAQmx « resource reserved ».
 - [ ] **Commandes non bloquées.** Après mise à jour, les `mv`, `on`, `init_all()` répondent normalement et apparaissent dans les logs avec leurs paramètres (vérifie le nouveau mécanisme de journalisation sur la version de Starlette installée sur le banc).
@@ -261,7 +267,7 @@ Remarques / résultats :
   *Attendu :* message rouge « Python virtual environment not found ... », pas de traceback. Remettre `.venv`.
 - [ ] **Port explicite.** `.\start_motion.ps1 -Port 8011` démarre sur 8011 (l'arrêter ensuite).
 - [ ] **Politique d'exécution.** Si Windows refuse le script : `powershell -ExecutionPolicy Bypass -File .\start_motion.ps1` fonctionne.
-- [ ] **Pare-feu.** Appliquer la règle de `docs/TECHNICAL.md` (section Firewall) sur `pc-moteurs` et `pc-spectro`, puis lancer le shell depuis un autre PC : les trois serveurs sont joignables.
+- [ ] **Pare-feu.** Appliquer la règle de `docs/TECHNICAL.md` (section Firewall) sur `pc-moteurs` (et `pc-spectro` plus tard), puis lancer le shell depuis un autre PC : les serveurs moteurs et FESTO sont joignables.
 - [ ] **(Optionnel) Démarrage automatique.** Si souhaité, créer la tâche planifiée de `docs/TECHNICAL.md` pour un serveur, fermer la session puis la rouvrir : le serveur démarre tout seul.
 - [ ] **Documentation.** Relire le `README.md` (noms des PC dans « Bench architecture ») et, dans `docs/TECHNICAL.md`, « Points to check on the hardware » et « Upgrading from the previous version ».
 

@@ -40,6 +40,9 @@ file of each PC; `config/servers.yaml` uses these names, never IP addresses.
 | FESTO (NI-DAQmx) | `pc-moteurs` (PC with the NI cDAQ chassis) | 8003 | `start_festo.ps1` |
 | Spectrometer (Andor) | `pc-spectro` (PC with the Andor camera) | 8002 | `start_spectro.ps1` |
 
+In v1.0 the spectrometer server is disabled (`disabled_servers` in `config/servers.yaml`):
+its code is kept, but it is not tested on the bench yet and the shell does not contact it.
+
 `pc-moteurs` and `pc-spectro` are example names: replace them here and in
 `config/servers.yaml` with the real names of the bench PCs. The shell runs on any PC.
 

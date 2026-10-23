@@ -12,3 +12,9 @@
 motion_server: "http://pc-moteurs:8001"
 spectro_server: "http://pc-spectro:8002"
 festo_server: "http://pc-moteurs:8003"
+
+# Servers the shell does not try to reach (not connected, not listed as missing).
+# The spectrometer server is not tested on the bench yet: remove it from this list
+# (disabled_servers: []) to use it again.
+disabled_servers:
+  - spectro_server

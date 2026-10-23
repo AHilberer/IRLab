@@ -121,7 +121,9 @@ nssm start IRLabMotion
 
 ## Configuration
 
-- `config/servers.yaml`: server URLs (machine names) and ports.
+- `config/servers.yaml`: server URLs (machine names) and ports, and `disabled_servers`:
+  servers the shell does not contact (shown `DISABLED`; `spec.acquire` refuses to run).
+  In v1.0 the spectrometer server is disabled, as it is not tested on the bench yet.
 - `config/motors.yaml`: PS90 controllers (serial port, timeouts), motors (axis, `unit`,
   `step_to_mm`, velocity, acceleration, `max_move_duration`, `position_tolerance_steps`),
   `initialize_on_startup`, `log_serial`. The fields are described at the top of the file.

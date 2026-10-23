@@ -10,7 +10,7 @@ from common.errors import MotionError, ServerError
 from clients.spectro_client import Spectrometer
 from clients.festo_client import load_actuators_from_server, PneumaticActuator, on, off, toggle, state
 from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
-from common.servers import get_server_url
+from common.servers import get_server_url, is_server_disabled
 from common.version import VERSION, get_version
 from scripts.base_scripts import ascan, dscan, tweak
 
@@ -39,6 +39,8 @@ FESTO_URL = get_server_url('festo_server', env_var='FESTO_SERVER', default='http
 
 # reachability of each server, updated by reconnect()
 servers_ok = {'motion': False, 'spectro': False, 'festo': False}
+# servers listed in `disabled_servers` of config/servers.yaml: never contacted
+disabled = {key for key in servers_ok if is_server_disabled(f'{key}_server')}
 # objects created from the servers, also exposed by name in the shell (see _expose)
 motors = {}
 actuators = {}
@@ -156,9 +158,12 @@ def _print_summary():
     for key, label, url in (('motion', 'Motion server', MOTION_URL),
                             ('spectro', 'Spectro server', SPECTRO_URL),
                             ('festo', 'FESTO server', FESTO_URL)):
-        print(f"  {label:<15} {'OK' if servers_ok[key] else 'NOT REACHABLE':<14} {url}")
+        if key in disabled:
+            print(f"  {label:<15} {'DISABLED':<14} (disabled_servers in config/servers.yaml)")
+        else:
+            print(f"  {label:<15} {'OK' if servers_ok[key] else 'NOT REACHABLE':<14} {url}")
     print(f"  {len(motors)} motor(s), {len(actuators)} actuator(s) loaded")
-    if not all(servers_ok.values()):
+    if not all(ok for key, ok in servers_ok.items() if key not in disabled):
         print("  Start the missing server(s), then run reconnect().")
     print("-----------------------------------------------------")
 
@@ -169,9 +174,9 @@ def reconnect():
     print("-----------------------------------------------------")
     print("Connecting to servers...")
     print("-----------------------------------------------------")
-    servers_ok['motion'] = _connect_motion()
-    servers_ok['spectro'] = _connect_spectro()
-    servers_ok['festo'] = _connect_festo()
+    for key, connect in (('motion', _connect_motion), ('spectro', _connect_spectro),
+                         ('festo', _connect_festo)):
+        servers_ok[key] = key not in disabled and connect()
     _print_summary()
 
 
@@ -189,6 +194,9 @@ def check_all():
         ("festo_server", FESTO_URL),
     ]
     for name, url in servers:
+        if is_server_disabled(name):
+            print(f"{name}: DISABLED")
+            continue
         try:
             r = safe_get(f"{url}/state", timeout=STATE_CHECK_TIMEOUT)
             print(f"{name}: {r.json().get('state', 'UNKNOWN')}")

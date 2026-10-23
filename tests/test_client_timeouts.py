@@ -41,7 +41,8 @@ def test_move_timeout_default_and_explicit(timeouts):
     assert mc.DEFAULT_MAX_MOVE_DURATION + mc.MOTION_TIMEOUT_MARGIN > 120
 
 
-def test_acquire_timeout_follows_exposure(timeouts):
+def test_acquire_timeout_follows_exposure(timeouts, monkeypatch):
+    monkeypatch.setattr(sc, 'is_server_disabled', lambda key: False)
     spec = sc.Spectrometer()
     spec.acquire(exposure=8)
     spec.acquire(exposure=8, timeout=3)
