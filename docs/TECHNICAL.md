@@ -22,10 +22,10 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Version
 
-The version number is `VERSION` in `common/version.py` (currently 1.3). It is shown:
+The version number is `VERSION` in `common/version.py` (currently 1.4). It is shown:
 
-- under the shell banner (`IRLab shell v1.3`);
-- in each server's console and log file at startup (`motion_server v1.3`);
+- under the shell banner (`IRLab shell v1.4`);
+- in each server's console and log file at startup (`motion_server v1.4`);
 - in each server's `GET /status` (`version`).
 
 When connecting, the shell warns if a server runs another version than its own: the

@@ -44,6 +44,7 @@ Version actuelle : **v1.2**, sur `main` (pull requests #1 `reliability-improveme
 | v1.1 | serveur spectro désactivé (`disabled_servers`) en attendant ses tests | testée : moteurs et FESTO validés (`TESTS_BANC.md`) |
 | v1.2 | corrections issues des tests de la v1.1 : châssis FESTO `cDAQ3`, état FESTO juste après redémarrage, réouverture du port série après rebranchement, erreurs affichées par `wm()`, `reconnect()` relance la config d'un serveur dégradé (`/docs` inutilisable hors ligne) | à tester (voir ci-dessous) |
 | v1.3 | tâche 16 : Python 3.13.17 (python.org, plus Anaconda) sur tous les PC, versions figées dans `requirements.txt` (`pip freeze` de pc-moteurs), `tools/download_wheels.ps1` et `tools/install_offline.ps1` ; paquets Andor reportés aux tests du spectro | à tester (`TESTS_BANC.md`, tâche 16) |
+| v1.4 | `start_shell.ps1` : lance le shell depuis n'importe quel dossier | à tester avec la v1.3 (tâche 16) |
 
 Les changements sont désormais regroupés en versions (`VERSION` dans `common/version.py` + tag git `vX.Y`), plutôt que copiés commit par commit sur le banc.
 

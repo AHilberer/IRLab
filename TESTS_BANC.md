@@ -264,9 +264,9 @@ Remarques / résultats :
 Pas testé d'autre profils pour le PS90.
 ---
 
-## Tâche 16 : versions figées et installation hors ligne (v1.3)
+## Tâche 16 : versions figées et installation hors ligne (v1.4)
 
-Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.3 sur le PC testé.
+Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.4 sur le PC testé.
 
 - [ ] **Python 3.13 installé.** Sur un PC sans Python 3.13, installer avec la commande du README (PowerShell administrateur), puis `py -3.13 --version`.
   *Attendu :* `Python 3.13.17`. Un PowerShell ordinaire suffit ensuite (plus besoin de l'invite Anaconda).
