@@ -15,6 +15,7 @@ class FakePS90Serial:
         self.port = port
         self.timeout = timeout
         self.disconnected = False      # simulate an unplugged cable: no response at all
+        self.broken = False            # simulate a lost USB-serial port: I/O raises (as pyserial)
         self.overrides = {}            # cmd -> raw response, to simulate bad answers
         self.blocked = {}              # axis index -> (reached position, status char), e.g. limit switch
         self.n_axes = n_axes
@@ -34,6 +35,8 @@ class FakePS90Serial:
 
     # --- pyserial API used by PS90 ---
     def reset_input_buffer(self):
+        if self.broken:
+            raise OSError('ClearCommError failed (PermissionError(13, \'Access is denied.\'))')
         with self._internal:
             self._pending = None
 

@@ -74,7 +74,8 @@ def _collect_positions(motors):
     for motor in motors:
         try:
             positions[motor.name] = _read_motor_position(motor)
-        except Exception:
+        except Exception as e:
+            print(f"[ERROR] cannot read {motor.name}: {e}")
             positions[motor.name] = None
     return positions
 
@@ -187,6 +188,7 @@ def wm(*motors):
     """Query positions for the provided Motor instances.
 
     Returns a dict name -> {'steps': int, 'mm': float} when step_to_mm is known, otherwise name->steps.
+    A motor that cannot be read is None, and its error is printed.
     """
     positions = {}
     for motor in motors:

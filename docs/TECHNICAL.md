@@ -21,11 +21,11 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Version
 
-The version number is `VERSION` in `common/version.py` (currently 1.1). It is shown:
+The version number is `VERSION` in `common/version.py` (currently 1.2). It is shown:
 
-- under the shell banner (`IRLab shell v1.1`);
-- in each server's console and log file at startup (`motion_server v1.1`);
-- in each server's `GET /status` (`version`) and on its `/docs` page.
+- under the shell banner (`IRLab shell v1.2`);
+- in each server's console and log file at startup (`motion_server v1.2`);
+- in each server's `GET /status` (`version`).
 
 When connecting, the shell warns if a server runs another version than its own: the
 code was not updated on one of the PCs.
@@ -36,7 +36,7 @@ commits to the bench. Change `VERSION`, commit, then tag the commit
 
 ## Installation details
 
-- The FESTO chassis name (`cDAQ1`) is the one shown in NI MAX.
+- The FESTO chassis name (`cDAQ3` on the bench) is the one shown in NI MAX.
 - The spectrometer server needs the Python packages `pyAndorSDK2` and
   `pyAndorSpectrograph`, installed with the Andor SDKs.
 - **Offline installation**: the bench network has no Internet access. Installing from
@@ -68,13 +68,15 @@ The scripts can be launched from any folder. They check that `.venv` exists, the
 network interfaces with the port of `config/servers.yaml` (`-Port <n>` overrides it).
 If PowerShell refuses to run scripts:
 `powershell -ExecutionPolicy Bypass -File .\start_motion.ps1`.
-Stop a server with Ctrl+C in its window: moving axes are stopped and ports are closed.
+Stop a server with Ctrl+C in its window: ports are closed. A running move is not
+interrupted (the server waits for its request to end, checked on the bench): stop the
+motors first with `stop_all()`.
 
 The motion and FESTO servers load their config file at startup and open the hardware.
 If the hardware is missing (COM port absent, NI driver missing...), the server still
 starts in **degraded mode**: `GET /status` reports the errors, and
-`POST /admin/reload_config` retries once the problem is fixed (from the `/docs` page of
-the server, for example). The spectrometer server connects the camera when the shell
+`POST /admin/reload_config` retries once the problem is fixed: `reconnect()` in the
+shell sends it to a degraded motion or FESTO server. The spectrometer server connects the camera when the shell
 asks it (`POST /spectro/load_config`, sent at each shell start and by `reconnect()`).
 
 Only one instance of each server may run: a second motion server reports that the COM
@@ -123,7 +125,7 @@ nssm start IRLabMotion
 
 - `config/servers.yaml`: server URLs (machine names) and ports, and `disabled_servers`:
   servers the shell does not contact (shown `DISABLED`; `spec.acquire` refuses to run).
-  In v1.1 the spectrometer server is disabled, as it is not tested on the bench yet.
+  Since v1.1 the spectrometer server is disabled, as it is not tested on the bench yet.
 - `config/motors.yaml`: PS90 controllers (serial port, timeouts), motors (axis, `unit`,
   `step_to_mm`, velocity, acceleration, `max_move_duration`, `position_tolerance_steps`),
   `initialize_on_startup`, `log_serial`. The fields are described at the top of the file.
@@ -141,7 +143,7 @@ after changing it (`POST /admin/reload_config` only retries what failed).
 | `IRLAB_MOTORS_CONFIG` | motion server | motor config file (`config/motors.yaml`) |
 | `IRLAB_FESTO_CONFIG` | FESTO server | FESTO config file (`config/festo.yaml`) |
 | `IRLAB_LOG_DIR` | servers | log directory (`logs/`) |
-| `FESTO_CHASSIS` | FESTO server | chassis when not set in the config (`cDAQ1`) |
+| `FESTO_CHASSIS` | FESTO server | chassis when not set in the config (default `cDAQ1`) |
 | `PS90_PORT` | motion server | serial port when not set in the config (none) |
 
 ## Shell commands: details
@@ -172,8 +174,15 @@ after changing it (`POST /admin/reload_config` only retries what failed).
 ## Server endpoints
 
 Actions that change the state of the bench use `POST` (a browser, a page refresh or a
-link crawler cannot trigger them); reads use `GET`. All endpoints can be tried from
-each server's `/docs` page.
+link crawler cannot trigger them); reads use `GET`. A `GET` can be opened in a browser;
+a `POST` is sent from PowerShell, for example:
+
+```powershell
+Invoke-RestMethod -Method Post http://pc-moteurs:8003/festo/close?name=main_festo
+```
+
+The `/docs` page of each server stays blank on the bench: it loads its scripts from the
+Internet.
 
 ### Motion server (port 8001)
 

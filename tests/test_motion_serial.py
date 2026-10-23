@@ -76,3 +76,27 @@ def test_late_ok_acknowledgement_is_skipped(monkeypatch):
     fake.positions[0] = 42
     ctrl.send('ABSOL1')
     assert ctrl.send('?CNT1') == '42'
+
+
+def test_port_reopened_after_cable_unplugged(monkeypatch):
+    """USB-serial cable unplugged then plugged back: clear error meanwhile, then the
+    port is reopened by the next command, without restarting the server."""
+    old, new = FakePS90Serial(), FakePS90Serial()
+    new.positions[2] = 7
+    ports = iter([old])
+    plugged = {'yes': True}
+
+    def open_serial(*a, **kw):
+        if not plugged['yes']:
+            raise OSError('could not open port FAKE')
+        return next(ports)
+    monkeypatch.setattr(ms.serial, 'Serial', open_serial)
+    monkeypatch.setattr(ms.time, 'sleep', lambda s: None)
+    ctrl = ms.PS90(port='FAKE', command_delay=0)
+
+    old.broken, plugged['yes'] = True, False          # cable unplugged
+    with pytest.raises(RuntimeError, match='lost'):
+        ctrl.send('?CNT3')
+
+    plugged['yes'], ports = True, iter([new])        # plugged back
+    assert ctrl.send('?CNT3') == '7'

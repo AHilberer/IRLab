@@ -143,24 +143,50 @@ class PS90:
         # Reentrant so multi-command sequences can hold it around several send().
         self.lock = threading.RLock()
         self.port = port
+        self.baudrate = baudrate
+        self.timeout = timeout
         self.command_delay = command_delay
+        self.ser = self._open()
+
+    def _open(self):
         try:
-            self.ser = serial.Serial(port, baudrate,
-                        timeout=timeout,
+            ser = serial.Serial(self.port, self.baudrate,
+                        timeout=self.timeout,
                         stopbits=1,
                         parity='N',
                         bytesize=8)
         except serial.SerialException as e:
             if _port_in_use(e):
-                raise RuntimeError(f'Serial port {port} is already in use by another program '
+                raise RuntimeError(f'Serial port {self.port} is already in use by another program '
                                    f'(is another motion server already running?): {e}') from e
             raise
         time.sleep(1)  # allow connection to settle
+        return ser
 
     def send(self, cmd):
         """Send a command. Queries (starting with '?') return the response string;
         other commands return None. Raises TimeoutError if a query gets no complete
-        response within the serial timeout."""
+        response within the serial timeout.
+
+        If the port fails (USB-serial cable unplugged), it is reopened and the command
+        sent again once: after the cable is plugged back, the next command works."""
+        with self.lock:
+            try:
+                return self._send(cmd)
+            except (serial.SerialException, OSError) as e:
+                logger.warning('Serial port %s failed (%s): reopening it', self.port, e)
+                try:
+                    self.ser.close()
+                except Exception:
+                    pass
+                try:
+                    self.ser = self._open()
+                except Exception as e2:
+                    raise RuntimeError(f'Serial port {self.port} lost (cable unplugged?): {e2}') from e2
+                logger.info('Serial port %s reopened', self.port)
+                return self._send(cmd)
+
+    def _send(self, cmd):
         full_cmd = cmd + '\r'   # OWIS uses CR as end character
         with self.lock:
             self.ser.reset_input_buffer()

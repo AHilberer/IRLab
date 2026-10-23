@@ -17,7 +17,7 @@
 controllers:
   - name: main_festo
     type: nidaqmx
-    chassis: cDAQ1           # chassis name as shown in NI MAX
+    chassis: cDAQ3           # chassis name as shown in NI MAX
 
 actuators:
   - name: festo_1

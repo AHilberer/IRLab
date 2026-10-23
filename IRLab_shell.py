@@ -83,10 +83,16 @@ def _expose(name, obj):
     return True
 
 
-def _server_status(label, url):
-    """Return the server's /status JSON, or None (with a warning) if it is not reachable."""
+def _server_status(label, url, reload_if_degraded=False):
+    """Return the server's /status JSON, or None (with a warning) if it is not reachable.
+
+    With `reload_if_degraded`, a degraded server is asked to retry what failed in its
+    config (POST /admin/reload_config), e.g. after plugging back the hardware."""
     try:
         status = safe_get(f"{url}/status", timeout=STARTUP_TIMEOUT).json()
+        if reload_if_degraded and status.get('status') == 'degraded':
+            print(f"{label} server degraded: retrying its config...")
+            status = safe_post(f"{url}/admin/reload_config", timeout=10).json()
     except ServerError as e:
         print(f"[WARN] {label} server at {url} answered with an error: {e}")
         return None
@@ -100,7 +106,7 @@ def _server_status(label, url):
 def _connect_motion():
     """Connect to the motion server and create the Motor objects (the server is the
     single source of truth: it loads config/motors.yaml at startup)."""
-    status = _server_status("Motion", MOTION_URL)
+    status = _server_status("Motion", MOTION_URL, reload_if_degraded=True)
     if status is None:
         return False
     try:
@@ -125,7 +131,7 @@ def _connect_motion():
 def _connect_festo():
     """Connect to the FESTO server and create the PneumaticActuator objects (the server
     is the single source of truth: it loads config/festo.yaml at startup)."""
-    if _server_status("FESTO", FESTO_URL) is None:
+    if _server_status("FESTO", FESTO_URL, reload_if_degraded=True) is None:
         return False
     try:
         loaded = load_actuators_from_server(timeout=5)
@@ -186,6 +192,8 @@ STATE_CHECK_TIMEOUT = 2
 def check_all():
     """Query GET /state on all three device servers and print their reported state.
 
+    The server state is its health (on: ready, moving: busy, fault: last command
+    failed, off: nothing connected), not the position of the actuators.
     Prints UNREACHABLE for a server if the request fails or times out.
     """
     servers = [

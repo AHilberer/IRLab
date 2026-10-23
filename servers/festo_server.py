@@ -336,6 +336,13 @@ def load_config(path: str = None):
         logger.error('Controller %s: %s', name, err)
     for name, err in actuator_errors.items():
         logger.error('Actuator %s: %s', name, err)
+    # Read the lines of the new actuators once, so that /state reflects the hardware
+    # right after a restart (not "off" until the first command). Does not move them.
+    for name in created[1]:
+        try:
+            actuators[name].read_state()
+        except Exception as e:
+            logger.error('Actuator %s: cannot read its lines: %s', name, e)
     logger.info('Config %s loaded: %d controller(s), %d actuator(s)', path, len(controllers), len(actuators))
     return created
 

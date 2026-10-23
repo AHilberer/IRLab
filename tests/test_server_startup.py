@@ -124,3 +124,21 @@ def test_festo_degraded_then_reload(monkeypatch, tmp_path):
 def test_spectro_status_is_json():
     st = TestClient(ss.app).get('/status').json()
     assert st['server'] == 'spectro_server' and st['version'] == VERSION
+
+
+def test_festo_state_read_from_hardware_at_startup(monkeypatch, tmp_path):
+    """After a restart, /state reflects the hardware at once (not "off" until a command)."""
+    import types
+    from tests.test_cleanup import _FakeNiTask
+    for name, value in [('controllers', {}), ('actuators', {}), ('controller_errors', {}),
+                        ('actuator_errors', {}), ('default_controller_name', None),
+                        ('config_error', None), ('config_path', None)]:
+        monkeypatch.setattr(fs, name, value)
+    cfg = tmp_path / 'festo.yaml'
+    cfg.write_text(FESTO_YAML)
+    monkeypatch.setenv('IRLAB_FESTO_CONFIG', str(cfg))
+    monkeypatch.setattr(fs, 'nidaqmx', types.SimpleNamespace(Task=_FakeNiTask))
+    monkeypatch.setattr(fs, 'LineGrouping', types.SimpleNamespace(CHAN_PER_LINE=None))
+    with TestClient(fs.app) as client:
+        assert client.get('/state').json()['state'] == 'on'
+        assert fs.actuators['festo_1'].last_state is True
