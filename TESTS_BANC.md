@@ -158,6 +158,8 @@ Remarques / résultats :
 - [ ] **Arrêt du serveur pendant un mouvement.** Lancer un long `mv` (faible vitesse), puis Ctrl+C dans la fenêtre du serveur moteurs.
   *Attendu :* l'axe est arrêté avant la fermeture du port série (message « Shutdown: stopped moving motor ... »).
 - [x] **FESTO.** Même chose côté FESTO : `http://pc-moteurs:8003/festo/actuators/list` liste les actionneurs sans passer par le shell ; `on(...)` / `off(...)` fonctionnent depuis le shell.
+- [ ] **État FESTO après redémarrage** (v1.2). Redémarrer le serveur FESTO, puis `check_all()` sans aucune commande FESTO avant.
+  *Attendu :* `festo_server: on` (avant la v1.2 : `off` jusqu'à la première commande).
 
 Remarques / résultats :
 Reprise avec `/admin/reload_config`. : L'adresse http://pc-moteurs:8001/docs mène a une page blanche.
@@ -266,21 +268,10 @@ Pas testé d'autre profils pour le PS90.
 
 ## Tâche 16 : versions figées et installation hors ligne (v1.5)
 
-Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.5 sur le PC testé.
+Validé sur le banc en v1.5 : scripts PowerShell autorisés (étape 0 du README), Python 3.13.17 installé sur les 5 PC, refus d'un `.venv` existant, installation hors ligne avec `install_offline.ps1`, serveurs et shell (`start_shell.ps1`) avec le nouveau `.venv`.
 
-- [ ] **Scripts autorisés.** Sur un PC où les `.ps1` sont refusés (« l'exécution de scripts est désactivée sur ce système »), faire l'étape 0 du README (PowerShell administrateur), puis ouvrir un PowerShell ordinaire et lancer `.\start_shell.ps1`.
-  *Attendu :* le script se lance (message d'erreur `.venv` normal s'il n'est pas encore créé). `Get-ExecutionPolicy -List` montre `LocalMachine Bypass`.
-- [ ] **Python 3.13 installé.** Sur un PC sans Python 3.13, installer avec la commande du README (PowerShell administrateur), puis `py -3.13 --version`.
-  *Attendu :* `Python 3.13.17`. Un PowerShell ordinaire suffit ensuite (plus besoin de l'invite Anaconda).
-- [ ] **`.venv` existant refusé.** Lancer `.\tools\install_offline.ps1 -Wheels <clé>\wheels` alors que `.venv` existe.
-  *Attendu :* message rouge « .venv already exists: rename it first... », rien n'est modifié.
-- [ ] **Installation hors ligne.** Câble réseau Internet débranché : `Rename-Item .venv .venv_old`, puis `.\tools\install_offline.ps1 -Wheels <clé>\wheels`.
-  *Attendu :* « OK: .venv created with Python 3.13.17, ... packages installed », sans aucun accès à Internet.
-- [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\tools\install_offline.ps1" -Wheels <clé>\wheels` (après avoir renommé le `.venv` créé au test précédent).
-  *Attendu :* même résultat. Sinon, noter le message d'erreur exact (même problème que `start_motion.ps1`, tâche 17).
-- [ ] **Serveurs et shell.** Avec le nouveau `.venv`, depuis un PowerShell ordinaire : `.\start_motion.ps1`, `.\start_festo.ps1`, puis le shell sur un autre PC avec `.\start_shell.ps1`.
-  *Attendu :* tout fonctionne comme en v1.2 (`init_all()`, `mv`, `wm`, `on`, `off`, `check_all()`). Supprimer ensuite `.venv_old`.
-- [ ] **Tous les PC.** Refaire l'installation sur les 5 PC ; `.\.venv\Scripts\python.exe --version` donne partout `Python 3.13.17`.
+- [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\tools\install_offline.ps1" -Wheels <clé>\wheels` (après avoir renommé le `.venv`).
+  *Attendu :* même résultat que depuis le dossier IRLab. **Ne marche pas** (comme `start_motion.ps1`, tâche 17) : noter le message d'erreur exact.
 
 Remarques / résultats :
 

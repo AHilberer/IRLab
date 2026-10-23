@@ -43,9 +43,9 @@ Version actuelle : **v1.2**, sur `main` (pull requests #1 `reliability-improveme
 | v1.0 | tâches ci-dessous + numéro de version affiché (shell, consoles et logs des serveurs, `/status`) | — |
 | v1.1 | serveur spectro désactivé (`disabled_servers`) en attendant ses tests | testée : moteurs et FESTO validés (`TESTS_BANC.md`) |
 | v1.2 | corrections issues des tests de la v1.1 : châssis FESTO `cDAQ3`, état FESTO juste après redémarrage, réouverture du port série après rebranchement, erreurs affichées par `wm()`, `reconnect()` relance la config d'un serveur dégradé (`/docs` inutilisable hors ligne) | à tester (voir ci-dessous) |
-| v1.3 | tâche 16 : Python 3.13.17 (python.org, plus Anaconda) sur tous les PC, versions figées dans `requirements.txt` (`pip freeze` de pc-moteurs), `tools/download_wheels.ps1` et `tools/install_offline.ps1` ; paquets Andor reportés aux tests du spectro | à tester (`TESTS_BANC.md`, tâche 16) |
-| v1.4 | `start_shell.ps1` : lance le shell depuis n'importe quel dossier | à tester avec la v1.3 (tâche 16) |
-| v1.5 | README : étape 0 de l'installation, autoriser les scripts PowerShell (`Set-ExecutionPolicy -Scope LocalMachine Bypass`) | à tester avec la v1.3 (tâche 16) |
+| v1.3 | tâche 16 : Python 3.13.17 (python.org, plus Anaconda) sur tous les PC, versions figées dans `requirements.txt` (`pip freeze` de pc-moteurs), `tools/download_wheels.ps1` et `tools/install_offline.ps1` ; paquets Andor reportés aux tests du spectro | testée : validée (`TESTS_BANC.md`, tâche 16) |
+| v1.4 | `start_shell.ps1` : lance le shell depuis n'importe quel dossier | testée : validée |
+| v1.5 | README : étape 0 de l'installation, autoriser les scripts PowerShell (`Set-ExecutionPolicy -Scope LocalMachine Bypass`) | testée : validée |
 
 Les changements sont désormais regroupés en versions (`VERSION` dans `common/version.py` + tag git `vX.Y`), plutôt que copiés commit par commit sur le banc.
 
@@ -81,7 +81,7 @@ Travaux faits en plus : revue globale du code (`814f19e`) et alignement du proto
 ### À vérifier sur le banc
 
 - **v1.2** : après débranchement puis rebranchement du câble série, `wm()` affiche une erreur claire, puis refonctionne sans redémarrer le serveur moteurs ; juste après un redémarrage du serveur FESTO, `check_all()` affiche `festo_server: on` ; PS90 débranché au démarrage, rebranché, puis `reconnect()` : les moteurs apparaissent.
-- **`start_motion.ps1` lancé depuis un autre dossier** (`& "C:\<chemin>\IRLab\start_motion.ps1"`) ne marche pas : relever le message d'erreur exact pour corriger le script.
+- **Scripts `.ps1` lancés depuis un autre dossier** (`& "C:\<chemin>\IRLab\start_motion.ps1"`, idem pour `tools\install_offline.ps1`) : ne marche pas, toujours en v1.5. Relever le message d'erreur exact pour corriger les scripts.
 - **Tests reportés par l'utilisateur** : fins de course et délai maximal (tâche 3 : savoir d'abord quels axes ont des fins de course), rotation des logs (tâche 12), autres profils de mouvement du PS90.
 
 ---
