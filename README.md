@@ -4,7 +4,7 @@ Control framework for an optical spectroscopy bench: FastAPI servers drive the
 hardware, and an IPython shell offers SPEC-like commands (`mv`, `wm`, `ascan`,
 `tweak`, `on`, `off`...) from any PC of the bench.
 
-Current version: **1.4** (shown under the shell banner and in each server's console,
+Current version: **1.5** (shown under the shell banner and in each server's console,
 see [`docs/TECHNICAL.md`](docs/TECHNICAL.md#version)).
 
 Technical details (configuration, endpoints, logs, points to check on the hardware...)
@@ -55,6 +55,15 @@ key (or a network share), the same on all PCs: the Python 3.13 installer
 
 On each PC (PowerShell; IRLab does not use Anaconda):
 
+0. Allow PowerShell scripts (`.ps1`), once per PC, for all accounts (PowerShell **as
+   administrator**). Otherwise Windows refuses them ("running scripts is disabled on this
+   system"):
+   ```powershell
+   Set-ExecutionPolicy -Scope LocalMachine Bypass
+   ```
+   If `Get-ExecutionPolicy -List` shows a value for `MachinePolicy` or `UserPolicy`, it is
+   imposed by the IT department and wins: run each script with
+   `powershell -ExecutionPolicy Bypass -File <script>` instead.
 1. Install Python 3.13, the same way on all PCs (PowerShell **as administrator**; installs
    the `py` launcher, does not change the PATH):
    ```powershell

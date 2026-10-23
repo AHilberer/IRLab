@@ -22,10 +22,10 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Version
 
-The version number is `VERSION` in `common/version.py` (currently 1.4). It is shown:
+The version number is `VERSION` in `common/version.py` (currently 1.5). It is shown:
 
-- under the shell banner (`IRLab shell v1.4`);
-- in each server's console and log file at startup (`motion_server v1.4`);
+- under the shell banner (`IRLab shell v1.5`);
+- in each server's console and log file at startup (`motion_server v1.5`);
 - in each server's `GET /status` (`version`).
 
 When connecting, the shell warns if a server runs another version than its own: the
@@ -106,8 +106,9 @@ On each server PC (see the table of the README):
 The scripts can be launched from any folder. They check that `.venv` exists, then run
 `python -m uvicorn` with the Python of `.venv` (no activation needed), listening on all
 network interfaces with the port of `config/servers.yaml` (`-Port <n>` overrides it).
-If PowerShell refuses to run scripts:
-`powershell -ExecutionPolicy Bypass -File .\start_motion.ps1`.
+If PowerShell refuses to run scripts, allow them once per PC (step 0 of the README
+installation: `Set-ExecutionPolicy -Scope LocalMachine Bypass` as administrator), or run
+a script with `powershell -ExecutionPolicy Bypass -File .\start_motion.ps1`.
 Stop a server with Ctrl+C in its window: ports are closed. A running move is not
 interrupted (the server waits for its request to end, checked on the bench): stop the
 motors first with `stop_all()`.

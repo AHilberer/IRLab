@@ -264,10 +264,12 @@ Remarques / résultats :
 Pas testé d'autre profils pour le PS90.
 ---
 
-## Tâche 16 : versions figées et installation hors ligne (v1.4)
+## Tâche 16 : versions figées et installation hors ligne (v1.5)
 
-Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.4 sur le PC testé.
+Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.5 sur le PC testé.
 
+- [ ] **Scripts autorisés.** Sur un PC où les `.ps1` sont refusés (« l'exécution de scripts est désactivée sur ce système »), faire l'étape 0 du README (PowerShell administrateur), puis ouvrir un PowerShell ordinaire et lancer `.\start_shell.ps1`.
+  *Attendu :* le script se lance (message d'erreur `.venv` normal s'il n'est pas encore créé). `Get-ExecutionPolicy -List` montre `LocalMachine Bypass`.
 - [ ] **Python 3.13 installé.** Sur un PC sans Python 3.13, installer avec la commande du README (PowerShell administrateur), puis `py -3.13 --version`.
   *Attendu :* `Python 3.13.17`. Un PowerShell ordinaire suffit ensuite (plus besoin de l'invite Anaconda).
 - [ ] **`.venv` existant refusé.** Lancer `.\tools\install_offline.ps1 -Wheels <clé>\wheels` alors que `.venv` existe.
