@@ -21,10 +21,10 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Version
 
-The version number is `VERSION` in `common/version.py` (currently 1.0). It is shown:
+The version number is `VERSION` in `common/version.py` (currently 1.1). It is shown:
 
-- under the shell banner (`IRLab shell v1.0`);
-- in each server's console and log file at startup (`motion_server v1.0`);
+- under the shell banner (`IRLab shell v1.1`);
+- in each server's console and log file at startup (`motion_server v1.1`);
 - in each server's `GET /status` (`version`) and on its `/docs` page.
 
 When connecting, the shell warns if a server runs another version than its own: the
@@ -123,7 +123,7 @@ nssm start IRLabMotion
 
 - `config/servers.yaml`: server URLs (machine names) and ports, and `disabled_servers`:
   servers the shell does not contact (shown `DISABLED`; `spec.acquire` refuses to run).
-  In v1.0 the spectrometer server is disabled, as it is not tested on the bench yet.
+  In v1.1 the spectrometer server is disabled, as it is not tested on the bench yet.
 - `config/motors.yaml`: PS90 controllers (serial port, timeouts), motors (axis, `unit`,
   `step_to_mm`, velocity, acceleration, `max_move_duration`, `position_tolerance_steps`),
   `initialize_on_startup`, `log_serial`. The fields are described at the top of the file.

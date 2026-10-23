@@ -6,7 +6,7 @@ en cas de problème, on peut revenir en arrière tâche par tâche.
 
 Cocher chaque test une fois validé, et noter le résultat en cas d'échec.
 
-> **Spectromètre reporté.** Pour cette campagne (v1.0), le serveur spectro est désactivé
+> **Spectromètre reporté.** Pour cette campagne (v1.1), le serveur spectro est désactivé
 > (`disabled_servers` dans `config/servers.yaml`) : le shell ne le contacte pas et l'affiche
 > `DISABLED`. Les tests marqués *(reporté : spectro désactivé)* seront faits plus tard,
 > après l'avoir retiré de cette liste.
@@ -141,9 +141,9 @@ Remarques / résultats :
 - [ ] **Moteurs listés sans le shell.** Démarrer le serveur moteurs, puis ouvrir dans un navigateur `http://pc-moteurs:8001/motors/list`.
   *Attendu :* les 6 moteurs sont listés (état `off`), **sans** avoir lancé le shell, et sans qu'aucun axe n'ait bougé.
 - [ ] **`/status`.** Ouvrir `http://pc-moteurs:8001/status`, `http://pc-moteurs:8003/status` (spectro : reporté).
-  *Attendu :* JSON avec le nom du serveur, la version (`"version": "1.0"`), `"status": "ok"` et les contrôleurs `connected`.
+  *Attendu :* JSON avec le nom du serveur, la version (`"version": "1.1"`), `"status": "ok"` et les contrôleurs `connected`.
 - [ ] **Version affichée.** Lancer les serveurs moteurs et FESTO, puis le shell.
-  *Attendu :* la console de chaque serveur affiche `<serveur> v1.0` au démarrage (aussi écrit dans `logs/`), le shell affiche `IRLab shell v1.0` sous la bannière, et chaque serveur joignable est listé avec `(v1.0)`, sans avertissement de version différente.
+  *Attendu :* la console de chaque serveur affiche `<serveur> v1.1` au démarrage (aussi écrit dans `logs/`), le shell affiche `IRLab shell v1.1` sous la bannière, et chaque serveur joignable est listé avec `(v1.1)`, sans avertissement de version différente.
 - [ ] **Shell et `init_all()`.** Lancer le shell.
   *Attendu :* message « Not initialized yet: ... Run init_all() ». Un `mv` est refusé (« not initialized »). Après `init_all()` (en surveillant le banc), les `mv` fonctionnent.
 - [ ] **Pas d'INIT à l'ouverture d'un shell.** Une fois les moteurs initialisés, ouvrir un second shell sur un autre PC.

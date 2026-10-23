@@ -5,7 +5,7 @@ VERSION is set by hand for each release, and the release commit is tagged in git
 v<VERSION>.
 """
 
-VERSION = '1.0'
+VERSION = '1.1'
 
 
 def get_version() -> str:
