@@ -4,7 +4,7 @@ Control framework for an optical spectroscopy bench: FastAPI servers drive the
 hardware, and an IPython shell offers SPEC-like commands (`mv`, `wm`, `ascan`,
 `tweak`, `on`, `off`...) from any PC of the bench.
 
-Current version: **1.2** (shown under the shell banner and in each server's console,
+Current version: **1.3** (shown under the shell banner and in each server's console,
 see [`docs/TECHNICAL.md`](docs/TECHNICAL.md#version)).
 
 Technical details (configuration, endpoints, logs, points to check on the hardware...)
@@ -48,22 +48,31 @@ its code is kept, but it is not tested on the bench yet and the shell does not c
 
 ## Installation
 
-On each PC, in the repository folder (PowerShell):
+The bench network has no Internet access: IRLab is installed from files kept on a USB
+key (or a network share), the same on all PCs: the Python 3.13 installer
+(`python-3.13.17-amd64.exe`) and the `wheels` folder of Python packages
+(see [`docs/TECHNICAL.md`](docs/TECHNICAL.md#offline-installation) to make them).
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-```
+On each PC (PowerShell; IRLab does not use Anaconda):
 
-Use the same Python version on all PCs. Drivers needed besides the Python packages:
+1. Install Python 3.13, the same way on all PCs (PowerShell **as administrator**; installs
+   the `py` launcher, does not change the PATH):
+   ```powershell
+   .\python-3.13.17-amd64.exe /passive InstallAllUsers=1 PrependPath=0 Include_launcher=1 InstallLauncherAllUsers=1 Include_test=0
+   ```
+2. In the repository folder, create the `.venv` from the `wheels` folder (an existing
+   `.venv` must be renamed first: `Rename-Item .venv .venv_old`):
+   ```powershell
+   .\tools\install_offline.ps1 -Wheels E:\wheels
+   ```
+
+Drivers needed besides the Python packages:
 
 - **FESTO PC**: the NI-DAQmx driver from National Instruments (the `nidaqmx` package
   alone is not enough);
 - **spectrometer PC**: the Andor SDK2 and Shamrock SDK;
 - **motion PC**: the USB-serial driver of the PS90, if any (COM port in `config/motors.yaml`).
 
-The bench network has no Internet access: the offline installation from downloaded
-packages is not scripted yet; meanwhile keep a copy of a working `.venv`.
 On the server PCs, ports 8001 to 8003 must be open in the firewall
 (see [`docs/TECHNICAL.md`](docs/TECHNICAL.md#firewall)).
 

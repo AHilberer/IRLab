@@ -264,6 +264,26 @@ Remarques / résultats :
 Pas testé d'autre profils pour le PS90.
 ---
 
+## Tâche 16 : versions figées et installation hors ligne (v1.3)
+
+Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le dossier `wheels` (fait sur `pc-moteurs`). Mettre à jour le dépôt IRLab en v1.3 sur le PC testé.
+
+- [ ] **Python 3.13 installé.** Sur un PC sans Python 3.13, installer avec la commande du README (PowerShell administrateur), puis `py -3.13 --version`.
+  *Attendu :* `Python 3.13.17`. Un PowerShell ordinaire suffit ensuite (plus besoin de l'invite Anaconda).
+- [ ] **`.venv` existant refusé.** Lancer `.\tools\install_offline.ps1 -Wheels <clé>\wheels` alors que `.venv` existe.
+  *Attendu :* message rouge « .venv already exists: rename it first... », rien n'est modifié.
+- [ ] **Installation hors ligne.** Câble réseau Internet débranché : `Rename-Item .venv .venv_old`, puis `.\tools\install_offline.ps1 -Wheels <clé>\wheels`.
+  *Attendu :* « OK: .venv created with Python 3.13.17, ... packages installed », sans aucun accès à Internet.
+- [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\tools\install_offline.ps1" -Wheels <clé>\wheels` (après avoir renommé le `.venv` créé au test précédent).
+  *Attendu :* même résultat. Sinon, noter le message d'erreur exact (même problème que `start_motion.ps1`, tâche 17).
+- [ ] **Serveurs et shell.** Avec le nouveau `.venv`, depuis un PowerShell ordinaire : `.\start_motion.ps1`, `.\start_festo.ps1`, puis le shell sur un autre PC.
+  *Attendu :* tout fonctionne comme en v1.2 (`init_all()`, `mv`, `wm`, `on`, `off`, `check_all()`). Supprimer ensuite `.venv_old`.
+- [ ] **Tous les PC.** Refaire l'installation sur les 5 PC ; `.\.venv\Scripts\python.exe --version` donne partout `Python 3.13.17`.
+
+Remarques / résultats :
+
+---
+
 ## Tâche 17 : scripts de démarrage et documentation
 
 (Les scripts `.ps1` n'ont pas pu être exécutés hors Windows : ces tests sont les premiers à les faire tourner.)

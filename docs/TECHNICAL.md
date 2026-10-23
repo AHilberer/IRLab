@@ -6,6 +6,7 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 - [Version](#version)
 - [Installation details](#installation-details)
+- [Offline installation](#offline-installation)
 - [Firewall](#firewall)
 - [Starting the servers](#starting-the-servers)
 - [Starting the shell](#starting-the-shell)
@@ -21,10 +22,10 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Version
 
-The version number is `VERSION` in `common/version.py` (currently 1.2). It is shown:
+The version number is `VERSION` in `common/version.py` (currently 1.3). It is shown:
 
-- under the shell banner (`IRLab shell v1.2`);
-- in each server's console and log file at startup (`motion_server v1.2`);
+- under the shell banner (`IRLab shell v1.3`);
+- in each server's console and log file at startup (`motion_server v1.3`);
 - in each server's `GET /status` (`version`).
 
 When connecting, the shell warns if a server runs another version than its own: the
@@ -38,11 +39,50 @@ commits to the bench. Change `VERSION`, commit, then tag the commit
 
 - The FESTO chassis name (`cDAQ3` on the bench) is the one shown in NI MAX.
 - The spectrometer server needs the Python packages `pyAndorSDK2` and
-  `pyAndorSpectrograph`, installed with the Andor SDKs.
-- **Offline installation**: the bench network has no Internet access. Installing from
-  downloaded wheels is not scripted yet (planned: fixed versions in `requirements.txt`,
-  `tools/download_wheels.ps1` and `tools/install_offline.ps1`). Meanwhile, keep a copy
-  of a working `.venv`, and note its versions with `.\.venv\Scripts\python.exe -m pip freeze`.
+  `pyAndorSpectrograph`, installed with the Andor SDKs. They are not in
+  `requirements.txt` (not on PyPI); their offline installation is not scripted yet (to do
+  with the spectrometer tests).
+
+## Offline installation
+
+All PCs use **Python 3.13.17** (python.org installer, not Anaconda) and the package
+versions fixed in `requirements.txt` (full `pip freeze` list, dependencies included).
+
+**To keep on the USB key** (or network share):
+
+- the Python installer `python-3.13.17-amd64.exe` (python.org, "Windows installer (64-bit)");
+- the `wheels` folder (Python packages, about 30 MB), made by `tools/download_wheels.ps1`;
+- the drivers: NI-DAQmx (offline installer, FESTO PC), Andor SDK2 and Shamrock SDK
+  (spectrometer PC), USB-serial driver of the PS90 if any (motion PC).
+
+**`tools/install_offline.ps1`** (each bench PC, no Internet; installation steps in the
+README): checks that `py -3.13` exists, that the package folder exists and that there
+is no `.venv` (never overwritten), then creates `.venv`, installs `requirements.txt` with
+`pip install --no-index --find-links <wheels>`, and checks the result (`pip check`,
+import of the modules). If the installation or a check fails, the incomplete `.venv`
+is removed.
+
+**`tools/download_wheels.ps1`** (Windows PC with Internet and Python 3.13, e.g.
+pc-moteurs): downloads the packages of `requirements.txt` for Windows / Python 3.13
+(`--no-deps --only-binary=:all:`) into `wheels` (or `-Dest <folder>`), then simulates an
+offline installation from that folder to check that no dependency is missing. Same
+download from Linux (no check, which only works on Windows):
+
+```bash
+pip download -r requirements.txt -d wheels --no-deps --only-binary=:all: --platform win_amd64 --python-version 3.13 --implementation cp
+```
+
+**To change the versions** (new package, update):
+
+1. On pc-moteurs connected to the Internet: rename `.venv`, create a new one
+   (`py -3.13 -m venv .venv`), install the direct dependencies listed at the top of
+   `requirements.txt` (`.\.venv\Scripts\python.exe -m pip install ...`), and check that
+   the servers and the shell work.
+2. `.\.venv\Scripts\python.exe -m pip freeze | Out-File -Encoding utf8 freeze.txt`
+   (not `> freeze.txt`, which writes UTF-16 with Windows PowerShell), and replace the
+   list in `requirements.txt` with it (keep the comments at the top).
+3. `.\tools\download_wheels.ps1`, then copy `wheels` to the USB key.
+4. On the other PCs: `Rename-Item .venv .venv_old`, then `.\tools\install_offline.ps1`.
 
 ## Firewall
 

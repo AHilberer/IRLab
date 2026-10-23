@@ -43,6 +43,7 @@ Version actuelle : **v1.2**, sur `main` (pull requests #1 `reliability-improveme
 | v1.0 | tâches ci-dessous + numéro de version affiché (shell, consoles et logs des serveurs, `/status`) | — |
 | v1.1 | serveur spectro désactivé (`disabled_servers`) en attendant ses tests | testée : moteurs et FESTO validés (`TESTS_BANC.md`) |
 | v1.2 | corrections issues des tests de la v1.1 : châssis FESTO `cDAQ3`, état FESTO juste après redémarrage, réouverture du port série après rebranchement, erreurs affichées par `wm()`, `reconnect()` relance la config d'un serveur dégradé (`/docs` inutilisable hors ligne) | à tester (voir ci-dessous) |
+| v1.3 | tâche 16 : Python 3.13.17 (python.org, plus Anaconda) sur tous les PC, versions figées dans `requirements.txt` (`pip freeze` de pc-moteurs), `tools/download_wheels.ps1` et `tools/install_offline.ps1` ; paquets Andor reportés aux tests du spectro | à tester (`TESTS_BANC.md`, tâche 16) |
 
 Les changements sont désormais regroupés en versions (`VERSION` dans `common/version.py` + tag git `vX.Y`), plutôt que copiés commit par commit sur le banc.
 
@@ -63,18 +64,17 @@ Les changements sont désormais regroupés en versions (`VERSION` dans `common/v
 | 13 | Scans qui acquièrent et enregistrent les données | fonctionnel | **à faire** |
 | 14 | Mouvements simultanés dans `mv` | fonctionnel | **à faire** |
 | 15 | Petits bugs et nettoyage | qualité | fait (`f400df0`) |
-| 16 | Versions figées et installation hors ligne | déploiement | **à faire** |
+| 16 | Versions figées et installation hors ligne | déploiement | fait (v1.3) |
 | 17 | Scripts de démarrage et documentation | déploiement | fait (`b2b35bf`, `3d0aa74`), à compléter après 13 et 16 |
 
 Travaux faits en plus : revue globale du code (`814f19e`) et alignement du protocole PS90 sur le manuel du PS 90+ (`576de61`).
 
 ### Tâches restantes, par ordre de priorité
 
-1. **Tâche 16 : versions figées et installation hors ligne** (priorité). Il faut d'abord la sortie de `.\.venv\Scripts\python.exe -m pip freeze` et la version de Python (`python --version`) sur un PC du banc qui fonctionne.
-2. **Tâche 13 : scans qui acquièrent et enregistrent les données (HDF5).**
-3. **Tâche 14 : mouvements simultanés dans `mv`.** Rend aussi possible le Ctrl+C pendant un `mv` (constaté sur le banc : pris en compte seulement à la fin du mouvement), et éventuellement l'arrêt des axes par Ctrl+C dans la fenêtre du serveur moteurs (aujourd'hui, le serveur attend la fin du mouvement en cours).
-4. **Spectromètre** : tester le serveur spectro sur `pc-spectro` (chemin d'import de `ATSpectrograph`, appels au SDK), puis le réactiver (`disabled_servers: []`). Tests marqués « reporté » dans `TESTS_BANC.md`.
-5. **Tâche 17 : compléter la documentation** : installation hors ligne (après 16), format HDF5, circuit local → partage, `sync_data`, `IRLAB_DATA_DIR` et `IRLAB_LOCAL_DATA_DIR` (après 13).
+1. **Tâche 13 : scans qui acquièrent et enregistrent les données (HDF5).**
+2. **Tâche 14 : mouvements simultanés dans `mv`.** Rend aussi possible le Ctrl+C pendant un `mv` (constaté sur le banc : pris en compte seulement à la fin du mouvement), et éventuellement l'arrêt des axes par Ctrl+C dans la fenêtre du serveur moteurs (aujourd'hui, le serveur attend la fin du mouvement en cours).
+3. **Spectromètre** : tester le serveur spectro sur `pc-spectro` (chemin d'import de `ATSpectrograph`, appels au SDK), installer les paquets Andor hors ligne depuis les SDK (reporté de la tâche 16), puis le réactiver (`disabled_servers: []`). Tests marqués « reporté » dans `TESTS_BANC.md`.
+4. **Tâche 17 : compléter la documentation** : format HDF5, circuit local → partage, `sync_data`, `IRLAB_DATA_DIR` et `IRLAB_LOCAL_DATA_DIR` (après 13).
 
 ### À vérifier sur le banc
 
