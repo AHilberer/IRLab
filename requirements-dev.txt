@@ -1,0 +1,5 @@
+# Automatic tests (tests/), not needed on the bench PCs:
+#   python -m pip install -r requirements.txt -r requirements-dev.txt
+#   python -m pytest tests
+pytest
+httpx

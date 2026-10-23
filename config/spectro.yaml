@@ -1,0 +1,12 @@
+# Spectrometer configuration for the IRLab spectro server
+#
+# Each entry pairs an Andor camera (SDK2) with an optional Shamrock
+# spectrograph. camera_index / spectrograph_index are the Andor SDK device
+# indices (0-based). Set spectrograph_index to null (or omit it) for a unit
+# with no spectrograph attached — the wavelength axis then falls back to
+# plain pixel indices.
+
+spectrometers:
+  - name: main
+    camera_index: 0
+    spectrograph_index: 0

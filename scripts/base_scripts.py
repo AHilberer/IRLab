@@ -13,7 +13,8 @@ from typing import Any
 import h5py
 import numpy as np
 
-from clients.motion_client import mv, mvr, wm
+from clients.motion_client import mv, mvr, stop
+from common.errors import MotionError
 
 if os.name != "nt":
     import termios
@@ -22,20 +23,36 @@ else:
     import msvcrt
 
 
+def _run_scan_points(motor: Any, points, initial_value):
+    """Move `motor` through `points`. On a motion error or Ctrl+C, stop the scan,
+    report the point reached and leave the motor where it is (no automatic return)."""
+    npts = len(points)
+    for i, x in enumerate(points, start=1):
+        try:
+            mv(motor, float(x), show_positions=False)
+        except MotionError as e:
+            print(f"\nScan stopped at point {i}/{npts} (target {float(x):g}): {e}")
+            print(f"Motor {motor.name} was NOT returned to its initial position ({initial_value:g}): "
+                  f"check the axis before moving it again.")
+            raise
+        except KeyboardInterrupt:
+            stop(motor)
+            print(f"\nScan interrupted at point {i}/{npts} (target {float(x):g}). "
+                  f"Motor {motor.name} was NOT returned to its initial position ({initial_value:g}).")
+            raise
+
+
 def ascan(motor: Any, start: float, stop: float, npts: int):
     """Move `motor` through `npts` linearly spaced positions from start to stop.
     
     Returns the motor to its initial position after the scan completes.
+    Stops at the first motion error or Ctrl+C, without returning to the initial position.
     """
-    # Read initial position
-    initial_pos = wm(motor)
-    initial_value = initial_pos[motor.name]
-    if isinstance(initial_value, dict):
-        initial_value = initial_value['mm'] if 'mm' in initial_value else initial_value['steps']
+    # Read initial position, in the motor's unit
+    initial_value = motor.position()
     
     # Perform scan
-    for x in np.linspace(start, stop, npts):
-        mv(motor, float(x), show_positions=False)
+    _run_scan_points(motor, np.linspace(start, stop, npts), initial_value)
     
     # Return to initial position
     mv(motor, initial_value, show_positions=False)
@@ -45,20 +62,17 @@ def dscan(motor: Any, start_delta: float, stop_delta: float, npts: int):
     
     `start_delta` and `stop_delta` are relative offsets from the current position.
     Returns the motor to its initial position after the scan completes.
+    Stops at the first motion error or Ctrl+C, without returning to the initial position.
     """
-    # Read initial position
-    initial_pos = wm(motor)
-    initial_value = initial_pos[motor.name]
-    if isinstance(initial_value, dict):
-        initial_value = initial_value['mm'] if 'mm' in initial_value else initial_value['steps']
+    # Read initial position, in the motor's unit
+    initial_value = motor.position()
     
     # Calculate absolute positions
     start_abs = initial_value + start_delta
     stop_abs = initial_value + stop_delta
     
     # Perform scan with absolute positions
-    for x in np.linspace(start_abs, stop_abs, npts):
-        mv(motor, float(x), show_positions=False)
+    _run_scan_points(motor, np.linspace(start_abs, stop_abs, npts), initial_value)
     
     # Return to initial position
     mv(motor, initial_value, show_positions=False)
@@ -128,30 +142,8 @@ def _read_key() -> str:
     return c1
 
 
-def _extract_wm_value(readback: dict, motor_name: str):
-    value = readback.get(motor_name)
-    if isinstance(value, dict):
-        if "mm" in value:
-            return value["mm"]
-        if "steps" in value:
-            return value["steps"]
-    return value
-
-
-def _motor_uses_mm(motor: Any) -> bool:
-    step_to_mm = getattr(motor, "step_to_mm", 1.0)
-    try:
-        return float(step_to_mm) != 1.0
-    except Exception:
-        return False
-
-
-def _motor_position_unit(motor: Any) -> str:
-    return "mm" if _motor_uses_mm(motor) else "steps"
-
-
 def _movement_delta_for_motor(motor: Any, delta: float) -> float:
-    if _motor_uses_mm(motor):
+    if motor.unit != "steps":
         return float(delta)
     sign = -1.0 if delta < 0 else 1.0
     return sign * max(1, int(round(abs(delta))))
@@ -160,8 +152,8 @@ def _movement_delta_for_motor(motor: Any, delta: float) -> float:
 def tweak(*motors: Any, step: float = 0.01, step_scale: float = 2.0, min_step: float = 0.0001):
     """Interactive jog mode for 1, 2, or 3 motors using relative moves.
 
-    Step values are expressed in millimetres for calibrated motors. Motors
-    without calibration fall back to whole-step jogs.
+    The step is expressed in each motor's unit (mm, deg...). Motors in steps
+    fall back to whole-step jogs.
 
     Controls:
     - Left/Right: axis 1
@@ -180,32 +172,23 @@ def tweak(*motors: Any, step: float = 0.01, step_scale: float = 2.0, min_step: f
     min_step = float(min_step)
 
     positions = {name: 0.0 for name in names}
-    try:
-        readback = wm(*motors)
-        for name in names:
-            value = _extract_wm_value(readback, name)
-            if isinstance(value, (int, float)):
-                positions[name] = float(value)
-    except Exception:
-        pass
 
     def refresh_positions() -> None:
-        try:
-            readback = wm(*motors)
-            for name in names:
-                value = _extract_wm_value(readback, name)
-                if isinstance(value, (int, float)):
-                    positions[name] = float(value)
-        except Exception:
-            pass
+        for motor, name in zip(motors, names):
+            try:
+                positions[name] = float(motor.position())
+            except Exception:
+                pass
+
+    refresh_positions()
 
     def render_status() -> None:
         refresh_positions()
         status_parts = [
-            f"{name}={positions[name]:g} {_motor_position_unit(motor)}"
+            f"{name}={positions[name]:g} {motor.unit}"
             for motor, name in zip(motors, names)
         ]
-        msg = f"\rstep={current_step:g} mm | " + " | ".join(status_parts) + "      "
+        msg = f"\rstep={current_step:g} | " + " | ".join(status_parts) + "      "
         sys.stdout.write(msg)
         sys.stdout.flush()
 
@@ -225,52 +208,60 @@ def tweak(*motors: Any, step: float = 0.01, step_scale: float = 2.0, min_step: f
         print("1-axis mode: Left/Right and Up/Down control the same motor")
     if len(motors) == 3:
         print("3-axis mode: a/z keys control axis 3")
-    print("Step is expressed in mm for calibrated motors; non-calibrated motors use whole steps.")
-    print(f"Initial step: {current_step:g} mm\n")
+    print("The step is in each motor's unit; motors in steps use whole steps.")
+    print(f"Initial step: {current_step:g}\n")
     render_status()
 
-    with _raw_stdin_mode():
-        while True:
-            key = _read_key()
-            if key == "QUIT":
-                break
-            if key == "STEP_UP":
-                current_step = max(min_step, current_step * step_scale)
-                render_status()
-                continue
-            if key == "STEP_DOWN":
-                current_step = max(min_step, current_step / step_scale)
-                render_status()
-                continue
-            if key == "LEFT":
-                move(0, -current_step)
-                render_status()
-                continue
-            if key == "RIGHT":
-                move(0, current_step)
-                render_status()
-                continue
-            if key == "UP":
-                if len(motors) == 1:
-                    move(0, current_step)
-                else:
-                    move(1, current_step)
-                render_status()
-                continue
-            if key == "DOWN":
-                if len(motors) == 1:
+    try:
+        with _raw_stdin_mode():
+            while True:
+                key = _read_key()
+                # in raw terminal mode Ctrl+C arrives as a character, not as a signal
+                if key == "\x03":
+                    raise KeyboardInterrupt
+                if key == "QUIT":
+                    break
+                if key == "STEP_UP":
+                    current_step = max(min_step, current_step * step_scale)
+                    render_status()
+                    continue
+                if key == "STEP_DOWN":
+                    current_step = max(min_step, current_step / step_scale)
+                    render_status()
+                    continue
+                if key == "LEFT":
                     move(0, -current_step)
-                else:
-                    move(1, -current_step)
-                render_status()
-                continue
-            if key == "AXIS3_UP" and len(motors) == 3:
-                move(2, current_step)
-                render_status()
-                continue
-            if key == "AXIS3_DOWN" and len(motors) == 3:
-                move(2, -current_step)
-                render_status()
+                    render_status()
+                    continue
+                if key == "RIGHT":
+                    move(0, current_step)
+                    render_status()
+                    continue
+                if key == "UP":
+                    if len(motors) == 1:
+                        move(0, current_step)
+                    else:
+                        move(1, current_step)
+                    render_status()
+                    continue
+                if key == "DOWN":
+                    if len(motors) == 1:
+                        move(0, -current_step)
+                    else:
+                        move(1, -current_step)
+                    render_status()
+                    continue
+                if key == "AXIS3_UP" and len(motors) == 3:
+                    move(2, current_step)
+                    render_status()
+                    continue
+                if key == "AXIS3_DOWN" and len(motors) == 3:
+                    move(2, -current_step)
+                    render_status()
+    except KeyboardInterrupt:
+        stop(*motors)
+        print("\n\nInterrupted: motors stopped")
+        raise
 
     print("\n\nLeaving jog mode")
     print(f"Final positions: {positions}")

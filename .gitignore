@@ -1,3 +1,6 @@
+# IRLab server logs (see common/logging_setup.py)
+logs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

@@ -1,14 +1,18 @@
 # IRLab_shell.py
 # startup with 'python IRLab_shell.py'
 
+import builtins
+import keyword
+
 import IPython
-from clients.motion_client import build_motor_list_from_config, mv, wm, mvr, free, control, free_all_motors, control_all_motors, Motor
+from clients.motion_client import load_motors_from_server, mv, wm, mvr, free, control, free_all_motors, control_all_motors, stop, stop_all, init, init_all, Motor
+from common.errors import MotionError, ServerError
 from clients.spectro_client import Spectrometer
-from clients.festo_client import build_actuator_list_from_config, PneumaticActuator, on, off, toggle, state
-from common.http_client import safe_get, DEFAULT_TIMEOUT
-from common.servers import get_server_url
+from clients.festo_client import load_actuators_from_server, PneumaticActuator, on, off, toggle, state
+from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
+from common.servers import get_server_url, is_server_disabled
+from common.version import VERSION, get_version
 from scripts.base_scripts import ascan, dscan, tweak
-import os
 
 print("""
  █████ ███████████   █████                 █████    
@@ -20,164 +24,197 @@ print("""
  █████ █████   █████ ███████████▒▒████████ ████████ 
 ▒▒▒▒▒ ▒▒▒▒▒   ▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒  
                                                     
-                                                    
  """)
+print(f"IRLab shell {get_version()}")
+print()
 
 spec = Spectrometer()
-
-
-# Note: client functions `mv` and `wm` are imported directly and available in the shell.
-# `ascan` is imported from `scripts/base_scripts.py`.
-print("-----------------------------------------------------")
-print("Checking connections...")
-print("-----------------------------------------------------")
 
 # prefer a short timeout at startup so the shell doesn't block
 STARTUP_TIMEOUT = 2
 
-# Check motion server status
-try:
-    motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
-    r = safe_get(f"{motion_url}/status", timeout=STARTUP_TIMEOUT)
-    print(f"Motor server running: {r.text}")
-    motor_server_ok = True
-except Exception:
-    print("Motor server NOT reachable")
-    motor_server_ok = False
-# Check spectro server status
-try:
-    s_status = spec.status(timeout=STARTUP_TIMEOUT)
-    if s_status is None:
-        print("Spectro server NOT reachable")
-        spectro_server_ok = False
-    else:
-        print(f"Spectro server running: {s_status}")
-        spectro_server_ok = True
-except Exception:
-    print("Spectro server NOT reachable")
-    spectro_server_ok = False
+MOTION_URL = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
+SPECTRO_URL = get_server_url('spectro_server', env_var='SPECTRO_SERVER', default='http://127.0.0.1:8002')
+FESTO_URL = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
 
-# Check FESTO server status
-try:
-    festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
-    r = safe_get(f"{festo_url}/status", timeout=STARTUP_TIMEOUT)
-    print(f"FESTO server running: {r.text}")
-    festo_server_ok = True
-except Exception:
-    print("FESTO server NOT reachable")
-    festo_server_ok = False
-
-print("-----------------------------------------------------")
-print("Checked connections to servers.")
-print("-----------------------------------------------------")
-print("-----------------------------------------------------")
-print("Building controlers and motor objects...")
-print("-----------------------------------------------------")
-
-# Build or obtain motors. Prefer server-side single source-of-truth by asking the motion
-# server to load its config and then using /motors/list to populate local Motor objects.
+# reachability of each server, updated by reconnect()
+servers_ok = {'motion': False, 'spectro': False, 'festo': False}
+# servers listed in `disabled_servers` of config/servers.yaml: never contacted
+disabled = {key for key in servers_ok if is_server_disabled(f'{key}_server')}
+# objects created from the servers, also exposed by name in the shell (see _expose)
 motors = {}
-if motor_server_ok:
-    try:
-        motion_url = get_server_url('motion_server', env_var='MOTION_SERVER', default='http://127.0.0.1:8001')
-        # ask the server to load its config and initialize axes (non-fatal)
-        try:
-            safe_get(f"{motion_url}/ps90/load_config?initialize=true", timeout=5)
-        except Exception:
-            # server may not be up or may not allow load; continue and try to read list
-            pass
-
-        # try to get the registered motors from the server
-        try:
-            r = safe_get(f"{motion_url}/motors/list", timeout=5)
-            data = r.json()
-            for entry in data.get('motors', []):
-                name = entry.get('name')
-                step = float(entry.get('step_to_mm', 1.0))
-                axis = entry.get('axis')
-                controller_name = entry.get('controller')
-                m = Motor(name=name, controler_channel=axis, step_to_mm=step, controller_name=controller_name)
-                motors[name] = m
-                globals()[name] = m
-                print(f"  [OK] Motor '{name}'  (axis {axis}, controller: {controller_name}, step_to_mm: {step})")
-            if not motors:
-                print("  (no motors registered on server)")
-        except Exception:
-            # fallback: try local config and register on server (best-effort)
-            try:
-                motors = build_motor_list_from_config(register_on_server=True)
-                for _name, _motor in motors.items():
-                    globals()[_name] = _motor
-                    print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
-                if not motors:
-                    print("  (no motors found in config)")
-            except Exception as e:
-                print(f"  [WARN] Failed to load/register motors from config: {e}")
-                motors = {}
-    except Exception:
-        # completely offline: try local config without registering
-        try:
-            motors = build_motor_list_from_config(register_on_server=False)
-            for _name, _motor in motors.items():
-                globals()[_name] = _motor
-                print(f"  [OK] Motor '{_name}'  (axis {_motor.controler_channel}, step_to_mm: {_motor.step_to_mm})")
-            if not motors:
-                print("  (no motors found in config)")
-        except Exception as e:
-            print(f"  [WARN] Failed to load local motors from config: {e}")
-            motors = {}
-else:
-    raise Exception(f"Motion server not reachable, cannot load motors from server")
-
-print("-----------------------------------------------------")
-print("Building FESTO actuator objects...")
-print("-----------------------------------------------------")
-
 actuators = {}
-if festo_server_ok:
+
+
+def _describe_status(data):
+    """One-line summary of a server's /status JSON, followed by its errors if any."""
+    if not isinstance(data, dict):
+        return str(data)
+    version = data.get('version', '?')
+    lines = [f"{data.get('status', '?')} (v{version})"]
+    if version != VERSION:
+        lines.append(f"  [WARN] the server runs v{version} but this shell is v{VERSION}: "
+                     "update the code on that PC (or on this one)")
+    if data.get('config_error'):
+        lines.append(f"  [ERROR] {data['config_error']}")
+    for c in data.get('controllers', []):
+        if c.get('state') == 'error':
+            lines.append(f"  [ERROR] controller {c.get('name')}: {c.get('error')}")
+    for group in ('motors', 'actuators'):
+        for name, err in (data.get(group) or {}).get('errors', {}).items():
+            lines.append(f"  [ERROR] {name}: {err}")
+    return "\n".join(lines)
+
+
+def _expose(name, obj):
+    """Make a motor / actuator available by its name in the shell, unless the name is not
+    a valid Python identifier or would overwrite something else (mv, wm, spec, a builtin...).
+    It is always available as motors[name] / actuators[name]."""
+    if not name.isidentifier() or keyword.iskeyword(name):
+        print(f"  [WARN] '{name}' is not a valid Python name: use motors['{name}'] / actuators['{name}']")
+        return False
+    existing = globals().get(name, getattr(builtins, name, None))
+    # replacing an object of the same kind (e.g. after reconnecting) is fine
+    if existing is not None and type(existing) is not type(obj):
+        print(f"  [WARN] '{name}' would overwrite the existing '{name}' ({type(existing).__name__}): "
+              f"not exposed, use motors['{name}'] / actuators['{name}']")
+        return False
+    globals()[name] = obj
+    return True
+
+
+def _server_status(label, url, reload_if_degraded=False):
+    """Return the server's /status JSON, or None (with a warning) if it is not reachable.
+
+    With `reload_if_degraded`, a degraded server is asked to retry what failed in its
+    config (POST /admin/reload_config), e.g. after plugging back the hardware."""
     try:
-        festo_url = get_server_url('festo_server', env_var='FESTO_SERVER', default='http://127.0.0.1:8003')
-        # Ask the server to load config (connects NI-DAQ controller and registers actuators).
-        try:
-            safe_get(f"{festo_url}/festo/load_config", timeout=5)
-        except Exception:
-            pass
+        status = safe_get(f"{url}/status", timeout=STARTUP_TIMEOUT).json()
+        if reload_if_degraded and status.get('status') == 'degraded':
+            print(f"{label} server degraded: retrying its config...")
+            status = safe_post(f"{url}/admin/reload_config", timeout=10).json()
+    except ServerError as e:
+        print(f"[WARN] {label} server at {url} answered with an error: {e}")
+        return None
+    except Exception:
+        print(f"[WARN] {label} server NOT reachable at {url}")
+        return None
+    print(f"{label} server running: {_describe_status(status)}")
+    return status
 
-        # Retrieve the registered actuators and expose them as named objects in the shell.
-        try:
-            r = safe_get(f"{festo_url}/festo/actuators/list", timeout=5)
-            data = r.json()
-            for entry in data.get('actuators', []):
-                name = entry.get('name')
-                if not name:
-                    continue
-                a = PneumaticActuator(
-                    name=name,
-                    controller_name=entry.get('controller'),
-                    module=entry.get('module'),
-                    lines=entry.get('lines'),
-                )
-                actuators[name] = a
-                globals()[name] = a
-                print(f"  [OK] Actuator '{name}'  ({entry.get('controller')}/{entry.get('module')}/port0/{entry.get('lines')})")
-            if not actuators:
-                print("  (no actuators registered on server)")
-        except Exception:
-            try:
-                actuators = build_actuator_list_from_config(register_on_server=True)
-                for _name, _actuator in actuators.items():
-                    globals()[_name] = _actuator
-                    print(f"  [OK] Actuator '{_name}'  ({_actuator.module}/port0/{_actuator.lines})")
-                if not actuators:
-                    print("  (no actuators found in config)")
-            except Exception as e:
-                print(f"  [WARN] Failed to load/register FESTO actuators: {e}")
-                actuators = {}
+
+def _connect_motion():
+    """Connect to the motion server and create the Motor objects (the server is the
+    single source of truth: it loads config/motors.yaml at startup)."""
+    status = _server_status("Motion", MOTION_URL, reload_if_degraded=True)
+    if status is None:
+        return False
+    try:
+        loaded = load_motors_from_server(timeout=5)
     except Exception as e:
-        print(f"  [WARN] FESTO initialization failed: {e}")
-        actuators = {}
+        print(f"  [WARN] Failed to get the motors from the motion server: {e}")
+        return False
+    for name, m in loaded.items():
+        motors[name] = m
+        _expose(name, m)
+        print(f"  [OK] Motor '{name}'  (axis {m.controller_channel}, controller: {m.controller_name}, "
+              f"step_to_mm: {m.step_to_mm}, unit: {m.unit})")
+    if not loaded:
+        print("  (no motors registered on server)")
+    not_initialized = (status.get('motors') or {}).get('not_initialized', [])
+    if not_initialized:
+        print(f"  [INFO] Not initialized yet: {', '.join(not_initialized)}")
+        print("         Run init_all() (or init(motor)) before moving them: it powers the motors.")
+    return True
 
-print("-----------------------------------------------------")
+
+def _connect_festo():
+    """Connect to the FESTO server and create the PneumaticActuator objects (the server
+    is the single source of truth: it loads config/festo.yaml at startup)."""
+    if _server_status("FESTO", FESTO_URL, reload_if_degraded=True) is None:
+        return False
+    try:
+        loaded = load_actuators_from_server(timeout=5)
+    except Exception as e:
+        print(f"  [WARN] Failed to get the actuators from the FESTO server: {e}")
+        return False
+    for name, a in loaded.items():
+        actuators[name] = a
+        _expose(name, a)
+        print(f"  [OK] Actuator '{name}'  ({a.controller_name}/{a.module}/port0/{a.lines})")
+    if not loaded:
+        print("  (no actuators registered on server)")
+    return True
+
+
+def _connect_spectro():
+    """Connect to the spectro server and ask it to load its config (connect the hardware)."""
+    if _server_status("Spectro", SPECTRO_URL) is None:
+        return False
+    try:
+        safe_post(f"{SPECTRO_URL}/spectro/load_config", timeout=5)
+    except Exception as e:
+        print(f"  [WARN] Failed to load/connect spectrometer from config: {e}")
+    return True
+
+
+def _print_summary():
+    print("-----------------------------------------------------")
+    print("Summary:")
+    for key, label, url in (('motion', 'Motion server', MOTION_URL),
+                            ('spectro', 'Spectro server', SPECTRO_URL),
+                            ('festo', 'FESTO server', FESTO_URL)):
+        if key in disabled:
+            print(f"  {label:<15} {'DISABLED':<14} (disabled_servers in config/servers.yaml)")
+        else:
+            print(f"  {label:<15} {'OK' if servers_ok[key] else 'NOT REACHABLE':<14} {url}")
+    print(f"  {len(motors)} motor(s), {len(actuators)} actuator(s) loaded")
+    if not all(ok for key, ok in servers_ok.items() if key not in disabled):
+        print("  Start the missing server(s), then run reconnect().")
+    print("-----------------------------------------------------")
+
+
+def reconnect():
+    """Retry the connection to all servers and create the missing motor / actuator
+    objects (e.g. after starting a server, or after /admin/reload_config on a server)."""
+    print("-----------------------------------------------------")
+    print("Connecting to servers...")
+    print("-----------------------------------------------------")
+    for key, connect in (('motion', _connect_motion), ('spectro', _connect_spectro),
+                         ('festo', _connect_festo)):
+        servers_ok[key] = key not in disabled and connect()
+    _print_summary()
+
+
+STATE_CHECK_TIMEOUT = 2
+
+
+def check_all():
+    """Query GET /state on all three device servers and print their reported state.
+
+    The server state is its health (on: ready, moving: busy, fault: last command
+    failed, off: nothing connected), not the position of the actuators.
+    Prints UNREACHABLE for a server if the request fails or times out.
+    """
+    servers = [
+        ("motion_server", MOTION_URL),
+        ("spectro_server", SPECTRO_URL),
+        ("festo_server", FESTO_URL),
+    ]
+    for name, url in servers:
+        if is_server_disabled(name):
+            print(f"{name}: DISABLED")
+            continue
+        try:
+            r = safe_get(f"{url}/state", timeout=STATE_CHECK_TIMEOUT)
+            print(f"{name}: {r.json().get('state', 'UNKNOWN')}")
+        except Exception:
+            print(f"{name}: UNREACHABLE")
+
+
+# A missing server only produces a warning: the shell starts with what is available.
+reconnect()
+
 print("Starting custom shell interface.")
 print("-----------------------------------------------------")
 
