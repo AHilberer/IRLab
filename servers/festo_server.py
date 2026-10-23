@@ -4,10 +4,11 @@ import os
 import threading
 
 from common.states import DeviceState
-from common.version import get_version
+from common.version import VERSION, get_version
 from common.logging_setup import setup_logging, add_action_logging
 
 logger = setup_logging('festo_server')
+logger.info('festo_server %s', get_version())
 
 try:
     import nidaqmx
@@ -29,7 +30,7 @@ async def lifespan(app):
     shutdown_close_controllers()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title='festo_server', version=VERSION, lifespan=lifespan)
 add_action_logging(app, logger)
 
 # Registry of NI-DAQ controller instances (keyed by name)
@@ -412,7 +413,7 @@ def status():
     degraded = bool(config_error or controller_errors or actuator_errors)
     return {
         'server': 'festo_server',
-        'version': get_version(),
+        'version': VERSION,
         'status': 'degraded' if degraded else 'ok',
         'config': config_path,
         'config_error': config_error,

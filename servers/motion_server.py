@@ -8,10 +8,11 @@ import logging
 
 from common.states import DeviceState
 from common.errors import MotionError, MotorBusyError, MotionStoppedError
-from common.version import get_version
+from common.version import VERSION, get_version
 from common.logging_setup import setup_logging, add_action_logging
 
 logger = setup_logging('motion_server')
+logger.info('motion_server %s', get_version())
 # every PS90 command and response, at DEBUG level; enabled by `log_serial: true` in motors.yaml
 serial_logger = logging.getLogger('motion_server.serial')
 serial_logger.setLevel(logging.WARNING)
@@ -35,7 +36,7 @@ async def lifespan(app):
     shutdown_close_controllers()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(title='motion_server', version=VERSION, lifespan=lifespan)
 add_action_logging(app, logger)
 
 # Global controller instance (lazy-created)
@@ -810,7 +811,7 @@ def status():
     degraded = bool(config_error or controller_errors or motor_errors)
     return {
         "server": "motion_server",
-        "version": get_version(),
+        "version": VERSION,
         "status": "degraded" if degraded else "ok",
         "config": config_path,
         "config_error": config_error,

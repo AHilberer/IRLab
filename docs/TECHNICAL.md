@@ -4,6 +4,7 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 
 ## Contents
 
+- [Version](#version)
 - [Installation details](#installation-details)
 - [Firewall](#firewall)
 - [Starting the servers](#starting-the-servers)
@@ -17,6 +18,21 @@ Complements the [README](../README.md) (architecture, installation, shell comman
 - [Points to check on the hardware](#points-to-check-on-the-hardware)
 - [Upgrading from the previous version](#upgrading-from-the-previous-version)
 - [Tests](#tests)
+
+## Version
+
+The version number is `VERSION` in `common/version.py` (currently 1.0). It is shown:
+
+- under the shell banner (`IRLab shell v1.0`);
+- in each server's console and log file at startup (`motion_server v1.0`);
+- in each server's `GET /status` (`version`) and on its `/docs` page.
+
+When connecting, the shell warns if a server runs another version than its own: the
+code was not updated on one of the PCs.
+
+**New release**: group the changes into a release rather than copying intermediate
+commits to the bench. Change `VERSION`, commit, then tag the commit
+(`git tag -a v1.1 -m "IRLab v1.1"`) and push the tag (`git push origin v1.1`).
 
 ## Installation details
 

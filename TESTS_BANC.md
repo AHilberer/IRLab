@@ -136,7 +136,9 @@ Remarques / résultats :
 - [ ] **Moteurs listés sans le shell.** Démarrer le serveur moteurs, puis ouvrir dans un navigateur `http://pc-moteurs:8001/motors/list`.
   *Attendu :* les 6 moteurs sont listés (état `off`), **sans** avoir lancé le shell, et sans qu'aucun axe n'ait bougé.
 - [ ] **`/status`.** Ouvrir `http://pc-moteurs:8001/status`, `http://pc-moteurs:8003/status`, `http://pc-spectro:8002/status`.
-  *Attendu :* JSON avec le nom du serveur, la version (`branche@commit`), `"status": "ok"` et les contrôleurs `connected`.
+  *Attendu :* JSON avec le nom du serveur, la version (`"version": "1.0"`), `"status": "ok"` et les contrôleurs `connected`.
+- [ ] **Version affichée.** Lancer chaque serveur, puis le shell.
+  *Attendu :* la console de chaque serveur affiche `<serveur> v1.0` au démarrage (aussi écrit dans `logs/`), le shell affiche `IRLab shell v1.0` sous la bannière, et chaque serveur est listé avec `(v1.0)`, sans avertissement de version différente.
 - [ ] **Shell et `init_all()`.** Lancer le shell.
   *Attendu :* message « Not initialized yet: ... Run init_all() ». Un `mv` est refusé (« not initialized »). Après `init_all()` (en surveillant le banc), les `mv` fonctionnent.
 - [ ] **Pas d'INIT à l'ouverture d'un shell.** Une fois les moteurs initialisés, ouvrir un second shell sur un autre PC.

@@ -11,6 +11,7 @@ from clients.spectro_client import Spectrometer
 from clients.festo_client import load_actuators_from_server, PneumaticActuator, on, off, toggle, state
 from common.http_client import safe_get, safe_post, DEFAULT_TIMEOUT
 from common.servers import get_server_url
+from common.version import VERSION, get_version
 from scripts.base_scripts import ascan, dscan, tweak
 
 print("""
@@ -23,8 +24,9 @@ print("""
  █████ █████   █████ ███████████▒▒████████ ████████ 
 ▒▒▒▒▒ ▒▒▒▒▒   ▒▒▒▒▒ ▒▒▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒▒▒▒ ▒▒▒▒▒▒▒▒  
                                                     
-                                                    
  """)
+print(f"IRLab shell {get_version()}")
+print()
 
 spec = Spectrometer()
 
@@ -46,7 +48,11 @@ def _describe_status(data):
     """One-line summary of a server's /status JSON, followed by its errors if any."""
     if not isinstance(data, dict):
         return str(data)
-    lines = [f"{data.get('status', '?')} (version {data.get('version', '?')})"]
+    version = data.get('version', '?')
+    lines = [f"{data.get('status', '?')} (v{version})"]
+    if version != VERSION:
+        lines.append(f"  [WARN] the server runs v{version} but this shell is v{VERSION}: "
+                     "update the code on that PC (or on this one)")
     if data.get('config_error'):
         lines.append(f"  [ERROR] {data['config_error']}")
     for c in data.get('controllers', []):

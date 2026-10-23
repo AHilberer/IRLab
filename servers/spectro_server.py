@@ -4,10 +4,11 @@ import os
 import threading
 
 from common.states import DeviceState
-from common.version import get_version
+from common.version import VERSION, get_version
 from common.logging_setup import setup_logging, add_action_logging
 
 logger = setup_logging('spectro_server')
+logger.info('spectro_server %s', get_version())
 
 try:
     from pyAndorSDK2 import atmcd, atmcd_codes, atmcd_errors
@@ -28,7 +29,7 @@ try:
 except Exception:
     yaml = None
 
-app = FastAPI()
+app = FastAPI(title='spectro_server', version=VERSION)
 add_action_logging(app, logger)
 
 # Serializes all raw Andor SDK2 hardware calls (connect/close/acquire):
@@ -337,7 +338,7 @@ def status():
         specs = [{"name": n, "state": sp.state.value} for n, sp in spectrometers.items()]
     return {
         "server": "spectro_server",
-        "version": get_version(),
+        "version": VERSION,
         "status": "ok" if specs else "no spectrometer connected",
         "spectrometers": specs,
     }

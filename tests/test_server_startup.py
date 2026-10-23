@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 import servers.festo_server as fs
 import servers.motion_server as ms
 import servers.spectro_server as ss
+from common.version import VERSION
 
 MOTORS_YAML = """
 initialize_on_startup: {init}
@@ -122,4 +123,4 @@ def test_festo_degraded_then_reload(monkeypatch, tmp_path):
 
 def test_spectro_status_is_json():
     st = TestClient(ss.app).get('/status').json()
-    assert st['server'] == 'spectro_server' and 'version' in st
+    assert st['server'] == 'spectro_server' and st['version'] == VERSION

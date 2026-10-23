@@ -4,6 +4,9 @@ Control framework for an optical spectroscopy bench: FastAPI servers drive the
 hardware, and an IPython shell offers SPEC-like commands (`mv`, `wm`, `ascan`,
 `tweak`, `on`, `off`...) from any PC of the bench.
 
+Current version: **1.0** (shown under the shell banner and in each server's console,
+see [`docs/TECHNICAL.md`](docs/TECHNICAL.md#version)).
+
 Technical details (configuration, endpoints, logs, points to check on the hardware...)
 are in [`docs/TECHNICAL.md`](docs/TECHNICAL.md); the tests to run on the bench are in
 [`TESTS_BANC.md`](TESTS_BANC.md).
