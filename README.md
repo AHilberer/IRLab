@@ -80,7 +80,7 @@ On the server PCs, ports 8001 to 8003 must be open in the firewall
 start the shell from any PC and initialize the motors once:
 
 ```powershell
-.\.venv\Scripts\python.exe IRLab_shell.py
+.\start_shell.ps1      # same as .\.venv\Scripts\python.exe IRLab_shell.py
 ```
 ```python
 init_all()      # once after the motion server starts: powers the motors

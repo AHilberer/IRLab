@@ -125,8 +125,11 @@ port is already in use.
 ## Starting the shell
 
 ```powershell
-.\.venv\Scripts\python.exe IRLab_shell.py
+.\start_shell.ps1
 ```
+
+Like the server scripts, it can be launched from any folder and checks that `.venv`
+exists; it runs `.\.venv\Scripts\python.exe IRLab_shell.py` (no activation needed).
 
 The shell starts even if a server is not reachable (warning, then a summary of the
 servers and objects loaded); start the missing server, then run `reconnect()`.

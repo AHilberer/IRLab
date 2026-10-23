@@ -276,7 +276,7 @@ Préparation : sur la clé USB, l'installateur `python-3.13.17-amd64.exe` et le 
   *Attendu :* « OK: .venv created with Python 3.13.17, ... packages installed », sans aucun accès à Internet.
 - [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\tools\install_offline.ps1" -Wheels <clé>\wheels` (après avoir renommé le `.venv` créé au test précédent).
   *Attendu :* même résultat. Sinon, noter le message d'erreur exact (même problème que `start_motion.ps1`, tâche 17).
-- [ ] **Serveurs et shell.** Avec le nouveau `.venv`, depuis un PowerShell ordinaire : `.\start_motion.ps1`, `.\start_festo.ps1`, puis le shell sur un autre PC.
+- [ ] **Serveurs et shell.** Avec le nouveau `.venv`, depuis un PowerShell ordinaire : `.\start_motion.ps1`, `.\start_festo.ps1`, puis le shell sur un autre PC avec `.\start_shell.ps1`.
   *Attendu :* tout fonctionne comme en v1.2 (`init_all()`, `mv`, `wm`, `on`, `off`, `check_all()`). Supprimer ensuite `.venv_old`.
 - [ ] **Tous les PC.** Refaire l'installation sur les 5 PC ; `.\.venv\Scripts\python.exe --version` donne partout `Python 3.13.17`.
 

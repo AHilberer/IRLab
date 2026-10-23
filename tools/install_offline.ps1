@@ -67,6 +67,6 @@ if ($LASTEXITCODE -ne 0) {
 $Count = (& $Python -m pip list --format=freeze | Measure-Object -Line).Lines
 Write-Host "-----------------------------------------------------"
 Write-Host "OK: .venv created with Python $Version, $Count packages installed." -ForegroundColor Green
-Write-Host "Next: start the servers of this PC (.\start_motion.ps1...) or the shell."
+Write-Host "Next: start the servers of this PC (.\start_motion.ps1...) or the shell (.\start_shell.ps1)."
 Write-Host "FESTO PC: the NI-DAQmx driver must also be installed (the nidaqmx package alone is not enough)."
 Write-Host "-----------------------------------------------------"
