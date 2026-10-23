@@ -208,3 +208,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# offline installation packages (tools/download_wheels.ps1)
+wheels/

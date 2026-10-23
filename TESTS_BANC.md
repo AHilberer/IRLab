@@ -158,6 +158,8 @@ Remarques / résultats :
 - [ ] **Arrêt du serveur pendant un mouvement.** Lancer un long `mv` (faible vitesse), puis Ctrl+C dans la fenêtre du serveur moteurs.
   *Attendu :* l'axe est arrêté avant la fermeture du port série (message « Shutdown: stopped moving motor ... »).
 - [x] **FESTO.** Même chose côté FESTO : `http://pc-moteurs:8003/festo/actuators/list` liste les actionneurs sans passer par le shell ; `on(...)` / `off(...)` fonctionnent depuis le shell.
+- [ ] **État FESTO après redémarrage** (v1.2). Redémarrer le serveur FESTO, puis `check_all()` sans aucune commande FESTO avant.
+  *Attendu :* `festo_server: on` (avant la v1.2 : `off` jusqu'à la première commande).
 
 Remarques / résultats :
 Reprise avec `/admin/reload_config`. : L'adresse http://pc-moteurs:8001/docs mène a une page blanche.
@@ -262,6 +264,17 @@ Remarques / résultats :
 
 Remarques / résultats :
 Pas testé d'autre profils pour le PS90.
+---
+
+## Tâche 16 : versions figées et installation hors ligne (v1.5)
+
+Validé sur le banc en v1.5 : scripts PowerShell autorisés (étape 0 du README), Python 3.13.17 installé sur les 5 PC, refus d'un `.venv` existant, installation hors ligne avec `install_offline.ps1`, serveurs et shell (`start_shell.ps1`) avec le nouveau `.venv`.
+
+- [ ] **Lancement depuis un autre dossier.** Depuis `C:\` : `& "C:\<chemin>\IRLab\tools\install_offline.ps1" -Wheels <clé>\wheels` (après avoir renommé le `.venv`).
+  *Attendu :* même résultat que depuis le dossier IRLab. **Ne marche pas** (comme `start_motion.ps1`, tâche 17) : noter le message d'erreur exact.
+
+Remarques / résultats :
+
 ---
 
 ## Tâche 17 : scripts de démarrage et documentation
